@@ -374,7 +374,7 @@ static void ShowPage(int p){
 static void Layout(){
     if(!g_hwnd) return; RECT rc; GetClientRect(g_hwnd,&rc); int hh=S(68), sw=S(210), sh=S(34), pad=S(16);
     int y=hh+S(14); for(int i=0;i<PG_COUNT;i++){ SetWindowPos(GetDlgItem(g_hwnd,ID_NAV+i),nullptr,S(12),y,sw-S(24),S(44),SWP_NOZORDER); y+=S(48); }
-    int tabsX=sw+pad, tabW=std::min(S(250),(rc.right-tabsX-pad)/3-S(6)); for(int i=0;i<3;i++) SetWindowPos(GetDlgItem(g_hwnd,ID_PROFILE+i),nullptr,tabsX+i*(tabW+S(8)),S(14),tabW,S(40),SWP_NOZORDER);
+    int tabsX=sw+pad, tabW=std::min<int>(S(250),(int)((rc.right-tabsX-pad)/3-S(6))); for(int i=0;i<3;i++) SetWindowPos(GetDlgItem(g_hwnd,ID_PROFILE+i),nullptr,tabsX+i*(tabW+S(8)),S(14),tabW,S(40),SWP_NOZORDER);
     SetWindowPos(g_status,nullptr,sw+pad,rc.bottom-sh,rc.right-sw-pad-S(190),sh,SWP_NOZORDER); SetWindowPos(g_progress,nullptr,rc.right-S(180),rc.bottom-sh+S(10),S(164),S(14),SWP_NOZORDER);
     RECT c={sw+pad,hh+pad,rc.right-pad,rc.bottom-sh-S(8)}; int bw=S(196), bh=S(38), gap=S(8);
     for(int i=0;i<PG_COUNT;i++){ auto& pg=g_pages[i]; int x=c.left,yy=c.top; for(HWND b:pg.buttons){ if(x+bw>c.right&&x>c.left){ x=c.left; yy+=bh+gap; } SetWindowPos(b,nullptr,x,yy,bw,bh,SWP_NOZORDER); x+=bw+gap; }

@@ -1,4 +1,3 @@
-------------------------------------------------------------
 name: build-and-test
 on: [push, pull_request, workflow_dispatch]
 jobs:
@@ -33,4 +32,3 @@ jobs:
           Copy-Item -Recurse Source\PoneglyphSDK dist\Poneglyph\SDK
       - uses: actions/upload-artifact@v4
         with: { name: Poneglyph_v1.0.0_windows, path: dist }
-------------------------------------------------------------

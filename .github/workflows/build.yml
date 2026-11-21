@@ -12,15 +12,30 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Configure + build x86 (engine, tools, tests)
+        shell: pwsh
         run: |
-          cmake -S . -B build\x86 -A Win32
-          cmake --build build\x86 --config Release
+          cmake -S . -B build\x86 -A Win32 *> cfg86.log
+          $c1 = $LASTEXITCODE
+          cmake --build build\x86 --config Release *> build86.log
+          $c2 = $LASTEXITCODE
+          Get-Content cfg86.log, build86.log | Select-String -CaseSensitive -Pattern ' error C\d+| error LNK\d+|CMake Error|fatal error' | Select-Object -First 12 | ForEach-Object { $t = $_.Line.Trim().Replace('%','%25'); if ($t.Length -gt 400) { $t = $t.Substring(0,400) }; Write-Host "::error title=x86-compile::$t" }
+          if ($c1 -ne 0 -or $c2 -ne 0) { exit 1 }
       - name: Configure + build x64 (manager)
+        shell: pwsh
         run: |
-          cmake -S . -B build\x64 -A x64
-          cmake --build build\x64 --config Release
+          cmake -S . -B build\x64 -A x64 *> cfg64.log
+          $c1 = $LASTEXITCODE
+          cmake --build build\x64 --config Release *> build64.log
+          $c2 = $LASTEXITCODE
+          Get-Content cfg64.log, build64.log | Select-String -CaseSensitive -Pattern ' error C\d+| error LNK\d+|CMake Error|fatal error' | Select-Object -First 12 | ForEach-Object { $t = $_.Line.Trim().Replace('%','%25'); if ($t.Length -gt 400) { $t = $t.Substring(0,400) }; Write-Host "::error title=x64-compile::$t" }
+          if ($c1 -ne 0 -or $c2 -ne 0) { exit 1 }
       - name: Core tests + Windows proxy runtime tests
-        run: ctest --test-dir build\x86 -C Release --output-on-failure
+        shell: pwsh
+        run: |
+          ctest --test-dir build\x86 -C Release --output-on-failure *> test.log
+          $c = $LASTEXITCODE
+          Get-Content test.log | Select-String -Pattern 'FAIL|Failed|RESULT' | Select-Object -First 15 | ForEach-Object { $t = $_.Line.Trim().Replace('%','%25'); Write-Host "::error title=test::$t" }
+          if ($c -ne 0) { exit 1 }
       - name: Package
         shell: pwsh
         run: |

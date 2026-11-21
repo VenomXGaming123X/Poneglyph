@@ -51,7 +51,7 @@ static void LoadAddons(){
         HMODULE h=SafeLoad(wp.c_str(),&err,&exc); double ms=msSince(t0);
         if(!h){ char d[160]; if(exc) snprintf(d,sizeof d,"exception 0x%08lX during load",exc); else snprintf(d,sizeof d,"LoadLibrary failed, Windows error %lu%s",err,err==193?" (not a valid 32-bit DLL)":err==126?" (a dependency DLL is missing)":"");
             g_log.log(pg::LogLevel::Error,"FAIL %s : %s",e->rel.c_str(),d); recs.push_back({e->key,e->rel,"Failed",d,ms}); std::error_code ec; std::filesystem::remove(g_pp.logs/"loading.marker",ec); continue; }
-        std::string detail; FARPROC init=GetProcAddress(h,"Poneglyph_AddonInit"); std::string result="Loaded";
+        std::string detail; FARPROC init=GetProcAddress(h,"Poneglyph_AddonInit"); if(!init) init=GetProcAddress(h,"Poneglyph_AddonInit@4"); if(!init) init=GetProcAddress(h,"_Poneglyph_AddonInit@4"); /* 32-bit __stdcall exports are decorated */ std::string result="Loaded";
         if(init){ DWORD ex2=0; unsigned long rc=SafeInit(init,&api,&ex2); if(ex2){ result="Failed"; detail="exception in Poneglyph_AddonInit"; } else if(rc!=0){ result="Failed"; char d[64]; snprintf(d,sizeof d,"Poneglyph_AddonInit returned %lu",rc); detail=d; } else detail="initialised via SDK"; }
         ms=msSince(t0);
         g_log.log(result=="Loaded"?pg::LogLevel::Info:pg::LogLevel::Error,"%s %s in %.2f ms %s",result=="Loaded"?"LOAD":"FAIL",e->rel.c_str(),ms,detail.c_str());

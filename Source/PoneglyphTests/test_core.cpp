@@ -72,7 +72,7 @@ static void testLaa(){
     std::string h1; Sha256::ofFile(T/"laa/ffxiii2img.exe",h1); CHECK(h0==h1);
     auto r=patchLaa(T/"laa/ffxiii2img.exe",T/"laa/bak",{"ffxiii2img.exe"}); CHECK(r.result==LaaResult::Patched);
     auto p=inspectPe(T/"laa/ffxiii2img.exe"); CHECK(p.valid&&p.laa&&p.isX86());
-    std::ifstream a(T/"laa/ffxiii2img.exe",std::ios::binary); std::vector<uint8_t> now((std::istreambuf_iterator<char>(a)),{}); int diff=0; for(size_t i=0;i<exe.size();i++) if(now[i]!=exe[i]) diff++; CHECK(diff==1); // only the flag byte
+    { std::ifstream a(T/"laa/ffxiii2img.exe",std::ios::binary); std::vector<uint8_t> now((std::istreambuf_iterator<char>(a)),{}); int diff=0; for(size_t i=0;i<exe.size();i++) if(now[i]!=exe[i]) diff++; CHECK(diff==1); } // only the flag byte; stream closed before restore (Windows cannot replace an open file)
     CHECK(patchLaa(T/"laa/ffxiii2img.exe",T/"laa/bak").result==LaaResult::AlreadyLaa);
     auto rs=restoreFromBackup(r.backupPath,T/"laa/ffxiii2img.exe"); CHECK(rs.result==LaaResult::Patched);
     std::string h2; Sha256::ofFile(T/"laa/ffxiii2img.exe",h2); CHECK(h2==h0);

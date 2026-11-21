@@ -1,0 +1,36 @@
+PONEGLYPH - FIRST RUN CHECKLIST (for a non-programmer tester)
+=============================================================
+Goal: find out if the program really works on YOUR PC. Do the steps in order. Write down anything odd and send it to me.
+Use a COPY of the game folder or make sure Steam has "Verify integrity" available - Poneglyph backs things up, but be careful anyway.
+
+A. OPEN THE MANAGER
+ 1. Unzip Poneglyph_v1_0_0_windows.zip to e.g. C:\Poneglyph (NOT inside a game folder).
+ 2. Double-click Poneglyph\Poneglyph.exe.
+    - Windows may say "Windows protected your PC" (SmartScreen) because the file is new/unsigned: click "More info" > "Run anyway".
+    - Antivirus may complain about d3d9.dll later; see step E.
+ 3. CHECK: does a window open with a dark sidebar (Home, Add-ons, Performance, Memory (4 GB), Backups, Settings, Help), three game tabs at the top,
+    and readable text? Take a screenshot if anything looks wrong (cut-off text, overlapping buttons, all-white or all-black areas).
+
+B. SELECT A GAME (start with Final Fantasy XIII-2, or whichever you play)
+ 4. Click the game's tab, then Home > "1. Find My Game" and pick the game's .exe (see Read_Me.txt for names).
+ 5. CHECK: Home should say "Verification: Verified ..." and an OVERALL STATUS line.
+ 6. Memory (4 GB) page > "Check Status": it should say whether the 4 GB flag is ON or OFF.  (Do not press Enable yet.)
+
+C. INSTALL THE ENGINE
+ 7. Home > "2. Install Poneglyph". If you use NovaFix, it will ask before replacing - answer Yes only if you accept that
+    (your NovaFix d3d9.dll is saved in <game folder>\Poneglyph\Backups and can be restored with "Uninstall Poneglyph (undo)").
+ 8. CHECK: a message says installed and verified. A folder "Poneglyph" now exists next to the game's exe.
+
+D. START THE GAME
+ 9. Start the game (from Steam, or Home > "3. Play the Game").
+10. CHECK: does the game reach the title screen / main menu normally? Close it.
+11. Open <game folder>\Poneglyph\Logs\poneglyph.log - it should say "Forwarding to genuine d3d9.dll" and "starting".
+    If the game did NOT start: Home > "Uninstall Poneglyph (undo)", then send me the poneglyph.log file.
+
+E. IF YOU WANT TO GO FURTHER
+12. Add-ons page > "Scan Add-ons" (empty list is normal if you have no add-ons).
+13. Memory (4 GB) > "Enable 4 GB Flag" > Yes. Start the game again. If it does not start, press "Restore Original".
+14. Help > "Create Support Report" and send me the text file it creates.
+15. Antivirus: if it flags d3d9.dll, that is the typical false-positive for any DLL that hooks a game. Do not disable your antivirus; tell me.
+
+SEND ME: (a) what worked, (b) what did not, (c) screenshots of any problem, (d) poneglyph.log if the game failed.

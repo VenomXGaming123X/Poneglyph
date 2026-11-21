@@ -12,15 +12,15 @@ Windows 10 or 11 (64-bit). One of the three games. No Visual C++ redistributable
 
 INSTALL
  1. Extract this folder anywhere you like (not inside the game folder).
- 2. Run Poneglyph.exe. On Home, press "Choose Game Executable" and pick:
+ 2. Run Poneglyph.exe. On Home, press "1. Find My Game" and pick:
       FINAL FANTASY XIII     ... ffxiiiimg.exe  (white_data\prog\win\bin)
       FINAL FANTASY XIII-2   ... ffxiii2img.exe (alba_data\prog\win\bin)
       LIGHTNING RETURNS      ... LRFF13.exe
- 3. Press "Install Poneglyph Engine". Any d3d9.dll already there is backed up first.
+ 3. Press "2. Install Poneglyph". Any d3d9.dll already there is backed up first.
  4. Add mods: Add-ons > "Install ZIP...", or copy .asi/.dll files into <game folder>\Poneglyph\Addons.
 
 UNINSTALL
-Home > "Remove Poneglyph Engine". Your previous d3d9.dll is restored from the verified backup. Add-ons, settings and saves are kept.
+Home > "Uninstall Poneglyph (undo)". Your previous d3d9.dll is restored from the verified backup. Add-ons, settings and saves are kept.
 
 IF YOU USE NOVAFIX OR ANOTHER d3d9.dll
 Only one Direct3D 9 proxy can exist per game. Poneglyph will not overwrite it silently: it asks, backs it up, and can put it back.
@@ -30,7 +30,7 @@ Memory page. Makes the 32-bit game able to address up to 4 GB (never more). Back
 
 WHAT IS INCLUDED / NOT INCLUDED IN 1.0
 Included : engine proxy, deterministic add-on loading, crash recovery (auto-disables an add-on that crashed while loading),
-           safe ZIP install/uninstall, 4 GB flag with backup, process monitor, optional frame-time statistics, reports, 2 themes.
+           safe ZIP install/uninstall, 4 GB flag with backup, process monitor, optional frame-time statistics, reports, 3 themes.
 Not included: in-game overlay, per-callback add-on profiling, shader/renderer replacement, game-specific memory patches.
 
 SAFETY NOTES

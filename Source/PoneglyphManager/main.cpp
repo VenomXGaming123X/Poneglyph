@@ -107,7 +107,7 @@ static HomeState ComputeHome(){
     t+="Add-ons: "+std::to_string(ready)+" ready, "+std::to_string(dis)+" disabled, "+std::to_string(bad)+" with problems (see Add-ons page)\n";
     if(bad&&level=="Safe") level="Needs attention";
     auto recs=readLoadStatus(pp.status); if(!recs.empty()){ t+="\nLast game start (engine report):\n"; for(auto& r:recs){ char b[200]; snprintf(b,sizeof b,"  %-30s %-9s %.1f ms",r.file.c_str(),r.result.c_str(),r.ms); t+=b; if(r.result=="Failed") { t+="  <- "+r.detail; if(level=="Safe") level="Needs attention"; } t+="\n"; } }
-    else t+="\nThe game has not been started with Poneglyph yet, so there are no load results.\n";
+    else { IniFile st; if(st.load(pp.status)&&st.has("Engine","Written")) t+="\nLast game start with Poneglyph: "+st.get("Engine","Written")+" - the engine ran and found no add-ons to load.\n"; else t+="\nThe game has not been started with Poneglyph yet, so there are no load results.\n"; }
     if(g_mon.h) t+="\nThe game is running now: changes to engine or add-ons need a game restart ('Restart required').\n";
     t+="\nBackups: "+pathToUtf8(pp.backups)+"\nLogs   : "+pathToUtf8(pp.logs)+"\n";
     h.label=level; h.text="OVERALL STATUS: "+level+"\n\n"+t; return h;
@@ -227,7 +227,7 @@ static CsvAgg ReadFrameCsv(const fs::path& f){
 static ReportInput BuildInput(){
     ReportInput in; in.gameName=curGame()->displayName; in.exePath=pathToUtf8(g_prof[g_cur].exe); in.managerVersion=PG_MANAGER_VERSION; auto pp=curPaths();
     if(haveExe()){ in.exe=inspectPe(g_prof[g_cur].exe,{false,false,false}); IniFile cfg; cfg.load(pp.config); ScanOptions so; so.game=g_prof[g_cur].id; so.computeHash=true; in.addons=scanAddons(pp.addons,cfg,so); in.loadRecords=readLoadStatus(pp.status);
-        IniFile st; st.load(pp.status); in.engineVersion=st.get("Engine","Version"); auto agg=ReadFrameCsv(pp.logs/"framestats.csv"); if(agg.rows){ in.haveFrames=true; in.frames=agg.last; in.frames.frames=agg.frames; in.frames.spikes=agg.spikes; in.frames.seconds=agg.seconds; if(agg.seconds>0) in.frames.fps=(double)agg.frames/agg.seconds; in.frames.p99=agg.worstP99; in.frames.low1Fps=agg.worstLow1; in.note="Frame figures aggregate "+std::to_string(agg.rows)+" summary window(s); p99 and 1% low are the WORST window. Frame time = interval between Present calls (CPU-side), not GPU time."; } }
+        IniFile st; st.load(pp.status); in.engineVersion=st.get("Engine","Version"); in.engineStarted=st.has("Engine","Written"); in.engineLastStart=st.get("Engine","Written"); auto agg=ReadFrameCsv(pp.logs/"framestats.csv"); if(agg.rows){ in.haveFrames=true; in.frames=agg.last; in.frames.frames=agg.frames; in.frames.spikes=agg.spikes; in.frames.seconds=agg.seconds; if(agg.seconds>0) in.frames.fps=(double)agg.frames/agg.seconds; in.frames.p99=agg.worstP99; in.frames.low1Fps=agg.worstLow1; in.note="Frame figures aggregate "+std::to_string(agg.rows)+" summary window(s); p99 and 1% low are the WORST window. Frame time = interval between Present calls (CPU-side), not GPU time."; } }
     in.samples=g_samples; if(!haveExe()) in.warnings.push_back("No game executable selected."); return in;
 }
 static void ShowReport(){ if(!haveExe()){ Msg("Choose the game first","Select this game's executable first."); return; } auto in=std::make_shared<ReportInput>(); auto txt=std::make_shared<std::string>();

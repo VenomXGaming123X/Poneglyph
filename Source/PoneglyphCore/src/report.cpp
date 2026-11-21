@@ -34,7 +34,7 @@ std::string buildReport(const ReportInput& in){
     o+="\nADD-ONS ("+std::to_string(in.addons.size())+" found)\n";
     for(auto& a:in.addons){ o+=" - "+a.rel+"  ["+addonStatusText(a.status)+"]"+(a.order>=0?" order "+std::to_string(a.order+1):"")+"\n"; if(!a.reason.empty()) o+="     "+a.reason+"\n";
         if(!a.sha256.empty()) o+="     SHA-256 "+a.sha256+"\n"; o+="     Compatibility: "+a.compat+"\n"; }
-    o+="\nLAST ENGINE LOAD RESULTS\n"; if(in.loadRecords.empty()) o+=" (none - the game has not been started with Poneglyph yet)\n";
+    o+="\nLAST ENGINE LOAD RESULTS\n"; if(in.loadRecords.empty()){ if(in.engineStarted) o+=" The engine started the game at "+in.engineLastStart+" and found no add-ons to load (the Addons folder is empty).\n"; else o+=" (none - the game has not been started with Poneglyph yet)\n"; }
     for(auto& l:in.loadRecords){ std::snprintf(b,sizeof b," - %-32s %-8s %8.2f ms  %s\n",l.file.c_str(),l.result.c_str(),l.ms,l.detail.c_str()); o+=b; }
     o+="\nPROCESS MONITOR (Level 1)\n";
     if(in.samples.empty()) o+=" (no samples recorded)\n"; else {

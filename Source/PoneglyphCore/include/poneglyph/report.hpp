@@ -8,6 +8,7 @@ namespace pg {
 struct ProcSample { std::string time; double cpuPct=0; uint64_t workingSetBytes=0; };
 struct ReportInput {
     std::string gameName, exePath, engineVersion, managerVersion, note;
+    bool engineStarted=false; std::string engineLastStart;   // from the engine's status file (written on every game start)
     PeInfo exe; std::vector<AddonEntry> addons; std::vector<AddonLoadRecord> loadRecords;
     std::vector<ProcSample> samples; bool haveFrames=false; FrameSummary frames; std::vector<std::string> warnings, changes;
 };

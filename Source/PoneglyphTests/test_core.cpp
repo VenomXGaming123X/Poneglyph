@@ -185,7 +185,7 @@ static void testGamesStats(){
     CHECK(percentile({1,2,3,4,5,6,7,8,9,10},95)==10); CHECK(summarizeFrames({}).frames==0);
     Logger lg; fs::remove_all(T/"logs"); lg.open(T/"logs/t.log",400,2); for(int i=0;i<60;i++) lg.log(LogLevel::Info,"line %d padding padding padding",i); lg.close();
     CHECK(fs::exists(T/"logs/t.log")&&fs::exists(T/"logs/t.log.1")); CHECK(!fs::exists(T/"logs/t.log.3")); CHECK(fs::file_size(T/"logs/t.log")<=400);
-    ReportInput ri; ri.gameName="FFXIII-2"; ri.managerVersion="1.0.0"; auto rep=buildReport(ri); CHECK(rep.find("No measured frame data")!=std::string::npos); CHECK(rep.find("RECOMMENDATIONS")!=std::string::npos);
+    ReportInput ri; ri.gameName="FFXIII-2"; ri.managerVersion="1.0.0"; auto rep=buildReport(ri); CHECK(rep.find("No measured frame data")!=std::string::npos); CHECK(rep.find("has not been started")!=std::string::npos); ri.engineStarted=true; ri.engineLastStart="2026-01-01 10:00:00"; auto rep2=buildReport(ri); CHECK(rep2.find("found no add-ons")!=std::string::npos&&rep2.find("has not been started")==std::string::npos); CHECK(rep.find("RECOMMENDATIONS")!=std::string::npos);
 }
 static void testRealFixtures(){
     const char* e=std::getenv("PG_FIXTURES"); if(!e){ std::printf("  (PG_FIXTURES not set: skipping real-binary checks)\n"); return; }

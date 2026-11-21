@@ -1,0 +1,36 @@
+------------------------------------------------------------
+name: build-and-test
+on: [push, pull_request, workflow_dispatch]
+jobs:
+  core-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build -j
+      - run: ctest --test-dir build --output-on-failure
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure + build x86 (engine, tools, tests)
+        run: |
+          cmake -S . -B build\x86 -A Win32
+          cmake --build build\x86 --config Release
+      - name: Configure + build x64 (manager)
+        run: |
+          cmake -S . -B build\x64 -A x64
+          cmake --build build\x64 --config Release
+      - name: Core tests + Windows proxy runtime tests
+        run: ctest --test-dir build\x86 -C Release --output-on-failure
+      - name: Package
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist\Poneglyph\Engine | Out-Null
+          Copy-Item build\x64\Source\PoneglyphManager\Release\Poneglyph.exe dist\Poneglyph\
+          Copy-Item build\x86\Source\PoneglyphEngine\Release\d3d9.dll dist\Poneglyph\Engine\
+          Copy-Item build\x86\Source\PoneglyphTools\Release\pg_tool.exe dist\Poneglyph\
+          Copy-Item Documentation\Read_Me.txt,LICENSE dist\Poneglyph\
+          Copy-Item -Recurse Source\PoneglyphSDK dist\Poneglyph\SDK
+      - uses: actions/upload-artifact@v4
+        with: { name: Poneglyph_v1.0.0_windows, path: dist }
+------------------------------------------------------------

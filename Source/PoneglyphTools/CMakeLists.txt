@@ -1,0 +1,5 @@
+add_executable(pg_tool pg_tool.cpp)
+target_link_libraries(pg_tool PRIVATE PoneglyphCore)
+if(MSVC)
+  target_compile_options(pg_tool PRIVATE /W3 /utf-8)
+endif()

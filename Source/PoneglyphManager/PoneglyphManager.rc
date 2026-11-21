@@ -1,0 +1,6 @@
+#include "resource.h"
+#ifdef PG_HAVE_ICONS
+IDI_PG_SILVER ICON "poneglyph_silver.ico"
+IDI_PG_PURPLE ICON "poneglyph_purple.ico"
+#endif
+1 24 "manager.manifest"

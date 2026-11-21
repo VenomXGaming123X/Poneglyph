@@ -1,0 +1,2 @@
+#define IDI_PG_SILVER 101
+#define IDI_PG_PURPLE 102

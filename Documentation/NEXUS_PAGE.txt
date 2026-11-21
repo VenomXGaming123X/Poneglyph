@@ -1,0 +1,38 @@
+=== NEXUS MODS PAGE (paste into the description; BBCode) ===
+
+TITLE: Poneglyph Mod Loader - FFXIII Trilogy
+CATEGORY: Modders Resources / Utilities      VERSION: 1.0.0
+GAMES: Final Fantasy XIII, Final Fantasy XIII-2, Lightning Returns: Final Fantasy XIII
+
+SHORT SUMMARY:
+One mod loader for all three games: loads .asi/.dll add-ons in a safe order, backs up before changing anything, and can undo everything.
+
+[size=5][b]What it does[/b][/size]
+[list]
+[*]Direct3D 9 proxy engine that loads add-ons (.asi/.dll) in a deterministic, previewable order
+[*]Rejects wrong-architecture, invalid, duplicate, conflicting and proxy-type files, and says why
+[*]Crash recovery: an add-on that crashed the game while loading is switched off automatically (file kept)
+[*]Safe ZIP install/uninstall (path-traversal and zip-bomb protected; only files it installed are removed)
+[*]4 GB (Large Address Aware) flag with verified backup and one-click restore
+[*]Process monitor, optional lightweight frame-time statistics, before/after comparison, support report
+[*]Two themes: Silver Chrome and Dark Purple Chrome
+[/list]
+[size=5][b]Install[/b][/size]
+Extract anywhere, run Poneglyph.exe, choose the game's executable, press Install Poneglyph Engine. Full steps in Read_Me.txt.
+
+[size=5][b]Compatibility[/b][/size]
+Only one Direct3D 9 proxy can be installed per game. If NovaFix or another d3d9.dll exists, Poneglyph asks first, backs it up, and can restore it.
+
+[size=5][b]Not included in 1.0[/b][/size]
+In-game overlay, per-callback add-on profiling, renderer/shader replacement, game-specific memory patches.
+
+[size=5][b]Safety[/b][/size]
+No network access, no telemetry. Add-ons are native code - only install mods you trust. Single-player use.
+
+SOURCE CODE (MIT): https://github.com/<your-account>/Poneglyph
+
+=== FILES TO UPLOAD ===
+MAIN FILE : Poneglyph_v1.0.0.zip  (Poneglyph.exe, Engine\d3d9.dll, pg_tool.exe, Read_Me.txt, LICENSE, SDK\)
+OPTIONAL  : Poneglyph_SDK_v1.0.0.zip
+Tags: mod loader, asi loader, d3d9, utility, ffxiii
+Permissions: you must confirm you hold rights to any artwork you ship (see ARTWORK NOTE in Release_Checklist.md).

@@ -17,7 +17,7 @@ INSTALL
       FINAL FANTASY XIII-2   ... ffxiii2img.exe (alba_data\prog\win\bin)
       LIGHTNING RETURNS      ... LRFF13.exe
  3. Press "2. Install Poneglyph". Any d3d9.dll already there is backed up first.
- 4. Add mods: Add-ons > "Install ZIP...", or copy .asi/.dll files into <game folder>\Poneglyph\Addons.
+ 4. Add mods: Add-ons > "Install ZIP...", or copy .asi/.dll files into <game folder>\.Poneglyph-Addons.
 
 UNINSTALL
 Home > "Uninstall Poneglyph (undo)". Your previous d3d9.dll is restored from the verified backup. Add-ons, settings and saves are kept.
@@ -43,6 +43,6 @@ SAFETY NOTES
  * No telemetry. Poneglyph makes no network connections.
 
 LOGS AND SUPPORT
-<game folder>\Poneglyph\Logs\poneglyph.log, addon_status.ini, and reports from Help > "Create Support Report".
+<game folder>\.Poneglyph\Logs\poneglyph.log, addon_status.ini, and reports from Help > "Create Support Report".
 
 LICENSE: MIT (see LICENSE). Not affiliated with or endorsed by Square Enix, Valve or Nexus Mods.

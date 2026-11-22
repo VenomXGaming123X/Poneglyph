@@ -18,13 +18,13 @@ B. SELECT A GAME (start with Final Fantasy XIII-2, or whichever you play)
 
 C. INSTALL THE ENGINE
  7. Home > "2. Install Poneglyph". If you use NovaFix, it will ask before replacing - answer Yes only if you accept that
-    (your NovaFix d3d9.dll is saved in <game folder>\Poneglyph\Backups and can be restored with "Uninstall Poneglyph (undo)").
+    (your NovaFix d3d9.dll is saved in <game folder>\.Poneglyph\Backups and can be restored with "Uninstall Poneglyph (undo)").
  8. CHECK: a message says installed and verified. A folder "Poneglyph" now exists next to the game's exe.
 
 D. START THE GAME
  9. Start the game (from Steam, or Home > "3. Play the Game").
 10. CHECK: does the game reach the title screen / main menu normally? Close it.
-11. Open <game folder>\Poneglyph\Logs\poneglyph.log - it should say "Forwarding to genuine d3d9.dll" and "starting".
+11. Open <game folder>\.Poneglyph\Logs\poneglyph.log - it should say "Forwarding to genuine d3d9.dll" and "starting".
     If the game did NOT start: Home > "Uninstall Poneglyph (undo)", then send me the poneglyph.log file.
 
 E. IF YOU WANT TO GO FURTHER

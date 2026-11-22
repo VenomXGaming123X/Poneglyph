@@ -140,4 +140,14 @@ OpResult setAddonEnabled(const ProfilePaths& pp,const std::string& key,bool en,L
     if(!c.save(pp.config)){ r.message="Could not write the configuration."; return r; }
     log.log(LogLevel::Info,"addon %s -> %s",key.c_str(),en?"enabled":"disabled"); r.ok=true; r.message=en?"Enabled (takes effect next game start).":"Disabled. The file was not deleted."; return r;
 }
+OpResult migrateLegacyLayout(const ProfilePaths& pp,Logger& log){
+    OpResult r; r.ok=true; std::error_code ec;
+    bool oldRoot=fs::is_directory(pp.legacyRoot,ec), newRoot=fs::is_directory(pp.root,ec);
+    if(oldRoot&&!newRoot){ fs::rename(pp.legacyRoot,pp.root,ec); if(ec){ r.ok=false; r.message="Could not move the old Poneglyph folder: "+ec.message(); return r; } r.changed.push_back("Moved folder  Poneglyph  ->  .Poneglyph"); }
+    else if(oldRoot&&newRoot){ r.message="Both an old and a new Poneglyph folder exist; nothing was moved (your files are safe). Please tell the helper."; }
+    fs::path oldAddons=pp.root/"Addons";
+    if(fs::is_directory(oldAddons,ec)&&!fs::exists(pp.addons,ec)){ fs::rename(oldAddons,pp.addons,ec); if(ec){ r.ok=false; r.message="Could not move the add-ons folder: "+ec.message(); return r; } r.changed.push_back("Moved folder  Addons  ->  .Poneglyph-Addons"); }
+    if(!r.changed.empty()){ fs::create_directories(pp.logs,ec); Logger* l=&log; if(l){ for(auto& c:r.changed) l->log(LogLevel::Info,"migration: %s",c.c_str()); } if(r.message.empty()) r.message="Your files were moved to the new folder names."; }
+    return r;
+}
 }

@@ -21,4 +21,6 @@ OpResult uninstallAddonPackage(const ProfilePaths& pp,const std::string& package
 std::vector<std::string> listAddonPackages(const ProfilePaths& pp);
 OpResult setAddonEnabled(const ProfilePaths& pp,const std::string& addonKey,bool enabled,Logger& log);
 void writeDefaultConfig(const ProfilePaths& pp,GameId game);
+// Moves an older "Poneglyph" folder (and its "Addons" folder) to ".Poneglyph" / ".Poneglyph-Addons". Never overwrites; safe to call repeatedly.
+OpResult migrateLegacyLayout(const ProfilePaths& pp,Logger& log);
 }

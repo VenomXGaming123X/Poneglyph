@@ -25,7 +25,7 @@ std::vector<std::string> buildRecommendations(const ReportInput& in){
 }
 std::string buildReport(const ReportInput& in){
     std::string o; char b[512];
-    o+="PONEGLYPH REPORT\n================\n";
+    o+="PONEGLYPH REPORT\n\n";
     o+="Created      : "+nowStamp()+"\n";
     o+="Manager      : "+in.managerVersion+"   Engine: "+(in.engineVersion.empty()?"unknown":in.engineVersion)+"\n";
     o+="Game         : "+in.gameName+"\nExecutable   : "+in.exePath+"\n";

@@ -39,7 +39,7 @@ ExeCheck verifyGameExe(const fs::path& exe,GameId expected){
     c.ok=true; c.message="Verified: "+std::string(gi->exeName)+" ("+c.pe.archName()+", "+(c.pe.laa?"4 GB flag ON":"4 GB flag OFF")+")."; return c;
 }
 ProfilePaths ProfilePaths::forGameDir(const fs::path& d){
-    ProfilePaths p; p.gameDir=d; p.root=d/"Poneglyph"; p.addons=p.root/"Addons"; p.logs=p.root/"Logs"; p.backups=p.root/"Backups";
+    ProfilePaths p; p.gameDir=d; p.root=d/".Poneglyph"; p.legacyRoot=d/"Poneglyph"; p.addons=d/".Poneglyph-Addons"; p.logs=p.root/"Logs"; p.backups=p.root/"Backups";
     p.config=p.root/"poneglyph.ini"; p.status=p.logs/"addon_status.ini"; return p;
 }
 }

@@ -199,6 +199,18 @@ static void testLaunch(){
     IniFile c; saveLaunchOptions(c,o); IniFile d; d.loadFromString(c.toString()); auto r=loadLaunchOptions(d); CHECK(r.fullscreen&&r.width==1920&&r.height==1080&&r.msaa==4&&r.shadow==2048&&r.voiceJP&&r.decideReverse);
     IniFile hostile; hostile.loadFromString("[Launch]\nWidth=1920\nHeight=1080 -Evil=1\nMSAA=4; calc.exe\n"); auto h=loadLaunchOptions(hostile); CHECK(h.height==0||h.height==1080); for(auto& x:buildLaunchArgs(GameId::FFXIII,h)) CHECK(x.find(' ')==std::string::npos&&x.find('&')==std::string::npos);
 }
+static void testMigration(){
+    fs::path G=T/"mig"; fs::remove_all(G); auto pp=ProfilePaths::forGameDir(G); Logger lg;
+    CHECK(pp.root.filename()==".Poneglyph"&&pp.addons.filename()==".Poneglyph-Addons"&&pp.addons.parent_path()==G&&pp.logs==pp.root/"Logs"&&pp.backups==pp.root/"Backups");
+    wr(G/"Poneglyph/Addons/a.asi",std::vector<uint8_t>{1,2,3}); wr(G/"Poneglyph/Logs/poneglyph.log",std::vector<uint8_t>{'x'}); wr(G/"Poneglyph/poneglyph.ini",std::vector<uint8_t>{'['});
+    auto r=migrateLegacyLayout(pp,lg); CHECK(r.ok&&r.changed.size()==2);
+    CHECK(fs::exists(pp.addons/"a.asi")&&fs::exists(pp.logs/"poneglyph.log")&&fs::exists(pp.config)&&!fs::exists(G/"Poneglyph")&&!fs::exists(pp.root/"Addons"));
+    auto r2=migrateLegacyLayout(pp,lg); CHECK(r2.ok&&r2.changed.empty());
+    // both exist: never overwrite
+    wr(G/"Poneglyph/precious.txt",std::vector<uint8_t>{'p'}); auto r3=migrateLegacyLayout(pp,lg); CHECK(r3.ok&&r3.changed.empty()&&fs::exists(G/"Poneglyph/precious.txt")&&fs::exists(pp.addons/"a.asi"));
+    // the scanner works on the dot-named add-ons folder
+    IniFile cfg; ScanOptions so; so.game=GameId::FFXIII; wr(pp.addons/"ok.asi",makePe(0x14c,0x2102,{"Q"})); auto all=scanAddons(pp.addons,cfg,so); bool ready=false; for(auto& e:all) if(e.key=="ok.asi"&&e.status==AddonStatus::Ready) ready=true; CHECK(ready);
+}
 static void testRealFixtures(){
     const char* e=std::getenv("PG_FIXTURES"); if(!e){ std::printf("  (PG_FIXTURES not set: skipping real-binary checks)\n"); return; }
     fs::path F=e; struct X{ const char* f; bool laa; } xs[]={{"ffxiiiimg.exe",false},{"ffxiii2img.exe",true},{"LRFF13.exe",true}};
@@ -209,7 +221,7 @@ static void testRealFixtures(){
 }
 int main(){
     T=fs::temp_directory_path()/"pg_tests"; std::error_code ec; fs::remove_all(T,ec); fs::create_directories(T);
-    struct{const char* n; void(*f)();} tests[]={{"sha256",testSha},{"ini+util",testIniUtil},{"pe",testPe},{"laa",testLaa},{"zip",testZip},{"addons",testAddons},{"ops",testOps},{"games+stats+log+report",testGamesStats},{"launch-options",testLaunch},{"real-fixtures",testRealFixtures}};
+    struct{const char* n; void(*f)();} tests[]={{"sha256",testSha},{"ini+util",testIniUtil},{"pe",testPe},{"laa",testLaa},{"zip",testZip},{"addons",testAddons},{"ops",testOps},{"games+stats+log+report",testGamesStats},{"launch-options",testLaunch},{"migration",testMigration},{"real-fixtures",testRealFixtures}};
     for(auto& t:tests){ int f0=g_fail; std::printf("[ RUN  ] %s\n",t.n); t.f(); std::printf("[ %s ] %s\n",g_fail==f0?" OK ":"FAIL",t.n); }
     std::printf("\n%d checks passed, %d failed\n",g_pass,g_fail); return g_fail?1:0;
 }

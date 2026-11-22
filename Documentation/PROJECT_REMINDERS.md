@@ -46,3 +46,25 @@
  - Owner asked for language selection on Home: Voice (English/Japanese) is on Home. TEXT language needs the -Lan= values (XIII-2) - RESEARCH.
  - Controller priority stays #1: silent detection done (Manager); hot-plug/vibration in-game needs per-game reverse engineering (see NOVAFIX_FEATURE_MAP.md).
  - REMINDER STILL OPEN: Donation box, sound effects, One Piece font, more owner ideas, artwork rights, WebView2 UI decision.
+
+## H. OWNER'S LIST FROM UPDATE 4 REQUEST  (status as of this update)
+ DONE in Update 4 (safe, tested):
+  [x] Folders renamed: <game bin>\.Poneglyph  and  <game bin>\.Poneglyph-Addons  (all 3 games). Old "Poneglyph" folder is MOVED automatically (never overwritten).
+  [x] Removed the "=====" and "-----" lines from the UI text and reports.
+  [x] Lightning Returns voice message: no more error popup - the Voice button is greyed out with "Voice: set inside the game".
+  [x] Home tells you when a newer Poneglyph engine came with a download ("A Poneglyph update is ready").
+ WAITING FOR OWNER'S APPROVAL OF THE DESIGN PREVIEW (then built):
+  [ ] Welcome note "Hisashiburi dana... Mugiwara" - 5 seconds, OK button, auto-closes, One Piece-style background.
+  [ ] Modern UI: clean cards instead of text blocks, next-step card, themed title-bar buttons (minimise / maximise / close) and themed window border.
+  [ ] Dropdowns on every choice (Resolution etc.), glass look, hover highlight in the theme colour on menu items and tabs.
+  [ ] Font size -2 pt; Settings: font (5 Google Fonts, sans-serif default), size (4 choices), bold on/off.
+  [ ] Replace "Black Chrome" with the Elbaf-inspired futuristic theme (preview: "Elbaf Aurora").
+  [ ] "Where can I find my game folder?" help on Home.
+ PENDING - REMIND THE OWNER (do not forget):
+  [ ] "Other Games" in the side panel (older -> modern games; "your sidekick" scales it).
+  [ ] Help > "Check for Update" with GitHub. Design: public Releases of ONE fixed repository only (owner + repo pinned in the program), HTTPS, SHA-256 checked, asks before installing, checks at most once a day when idle. No GitHub password or token is needed. Owner should turn on 2-step login on the GitHub account and protect the main branch.
+  [ ] "Nakama / Friend" room in the side panel (unique feature) - owner will send Source Code + Master Plan to sync. Needs a security design first.
+  [ ] "Donate" below Help: PayPal. Poneglyph must NOT collect card/account details itself. Plan: show PayPal's own secure page inside the Poneglyph window (no separate browser), owner's PayPal account.
+  [ ] Button sound effects (owner says which).  [ ] One Piece-style font - discuss.
+  [ ] Controller priorities (Xbox/PS3/PS4/PS5/generic), ReShade, DXVK, resolution (launch options done for XIII/XIII-2), frame limiter etc. - see NOVAFIX_FEATURE_MAP.md.
+  [ ] Artwork rights before publishing the One Piece icons.

@@ -131,26 +131,30 @@ static HomeState ComputeHome(){
     auto pp=curPaths(); auto chk=verifyGameExe(g_prof[g_cur].exe,g_prof[g_cur].id);
     if(!chk.ok){ g_nextStep=B_CHOOSE_EXE; h.label="Needs attention";
         h.text="STEP 1 - Find your game          "+WARN+"\n\nThe file that was chosen cannot be used.\n\nWhat I found : "+chk.message+"\nWhy it matters: Poneglyph only works with the real game file, so it can never harm anything else.\nWhat to do   : press 'Find My Game' and choose  "+gi->exeName+".\n"; return h; }
+    std::string migNote; { auto mr=migrateLegacyLayout(pp,g_oplog); if(!mr.changed.empty()) migNote="   Folders             : "+mr.message+"\n"; else if(!mr.message.empty()) migNote="   Folders             : "+mr.message+"\n"; }
     ProxyKind k=classifyD3D9(pp.gameDir/"d3d9.dll"); IniFile cfg; cfg.load(pp.config); bool enabled=cfg.getBool("General","Enabled",true);
     ScanOptions so; so.game=g_prof[g_cur].id; auto all=scanAddons(pp.addons,cfg,so); int ready=0,dis=0,bad=0; for(auto& a:all){ if(a.status==AddonStatus::Ready) ready++; else if(a.status==AddonStatus::Disabled) dis++; else bad++; }
     auto recs=readLoadStatus(pp.status); IniFile st; bool started=st.load(pp.status)&&st.has("Engine","Written"); bool failed=false; for(auto& r:recs) if(r.result=="Failed") failed=true;
     bool foreign=(k==ProxyKind::NovaFix||k==ProxyKind::Dxvk||k==ProxyKind::Other); std::string headline;
+    bool engineOutdated=false; if(k==ProxyKind::Poneglyph){ std::string hi,hb; if(Sha256::ofFile(pp.gameDir/"d3d9.dll",hi)&&Sha256::ofFile(exeDir()/"Engine"/"d3d9.dll",hb)&&hi!=hb) engineOutdated=true; }
     t+="STEP 1 - Find your game          "+DONE+"\n   Found and checked: "+pathToUtf8(g_prof[g_cur].exe)+"\n\n";
     if(k==ProxyKind::None){ g_nextStep=B_INSTALL_ENGINE; headline="Next: press 'Install Poneglyph'";
         t+="STEP 2 - Install Poneglyph        "+TODO+"\n   Press the bright button  'Install Poneglyph'.\n   It first saves a safe copy of anything it replaces, and you can undo it any time.\n\nSTEP 3 - Play the game            "+WAIT+"\n"; }
     else if(foreign){ g_nextStep=B_INSTALL_ENGINE; headline="One thing needs your attention";
         t+="STEP 2 - Install Poneglyph        "+WARN+"\n   Another helper file ("+std::string(proxyKindText(k))+") is already installed for this game. Only one can work at a time.\n   Poneglyph will NOT replace it unless you press 'Install Poneglyph' and say Yes. Your file is saved first and can be brought back.\n\nSTEP 3 - Play the game            "+WAIT+"\n"; }
+    else if(engineOutdated){ g_nextStep=B_INSTALL_ENGINE; headline="A Poneglyph update is ready";
+        t+="STEP 2 - Install Poneglyph        "+WARN+"\n   A newer Poneglyph engine came with this download.\n   Press 'Install Poneglyph' to update it. It takes a second; your settings and mods stay as they are.\n\nSTEP 3 - Play the game            "+WAIT+"\n"; }
     else { g_nextStep=B_LAUNCH; headline=enabled?(failed||bad?"One thing needs your attention":"Everything looks good"):"Poneglyph is switched off";
         t+="STEP 2 - Install Poneglyph        "+DONE+(enabled?"":"  (but switched OFF in Settings)")+"\n\nSTEP 3 - Play the game            "+TODO+"\n   Press  'Play the Game'  (or start the game from Steam as usual).\n"; }
-    t+="\n-------------------------------------------------------------\nMORE INFORMATION (you can ignore this)\n";
+    t+="\nMORE INFORMATION (you can ignore this)\n";
     t+=std::string("   4 GB memory setting : ")+(chk.pe.laa?"ON  - the game may use up to 4 GB.":"OFF - you can turn it on in 'Memory (4 GB)'.")+"\n";
     t+="   Mods (add-ons)      : "+std::to_string(ready)+" ready, "+std::to_string(dis)+" switched off, "+std::to_string(bad)+" with a problem (see the Add-ons page)\n";
     g_ctl=DetectControllers(); { std::string cl; for(auto& c:g_ctl) cl+=(cl.empty()?"":", ")+c.name; t+="   Controllers         : "+(g_ctl.empty()?std::string("none detected - plug yours in BEFORE you start the game (these games look for controllers only when they start)"):cl)+"\n"; }
     if(started){ t+="   Last game start     : "+st.get("Engine","Written")+(recs.empty()?" - Poneglyph ran fine; there were no mods to load.":"")+"\n"; for(auto& r:recs){ char b[200]; snprintf(b,sizeof b,"      %-30s %-9s %.1f ms",r.file.c_str(),r.result.c_str(),r.ms); t+=b; if(r.result=="Failed") t+="   <- "+r.detail; t+="\n"; } }
     else t+="   Last game start     : none yet\n";
     if(g_mon.h) t+="   The game is running now. Changes you make will work after you restart the game.\n";
-    t+="   Safety copies saved : "+pathToUtf8(pp.backups)+"\n   Log files           : "+pathToUtf8(pp.logs)+"\n";
-    h.label=headline; h.text=headline+"\n=============================================================\n\n"+t; return h;
+    t+=migNote; t+="   Safety copies saved : "+pathToUtf8(pp.backups)+"\n   Log files           : "+pathToUtf8(pp.logs)+"\n";
+    h.label=headline; h.text=headline+"\n\n"+t; return h;
 }
 static void RefreshHome(){ auto h=ComputeHome(); SetMain(PG_HOME,h.text); SetStatus(h.label+"   |   "+curGame()->displayName); for(HWND b:g_pages[PG_HOME].buttons) InvalidateRect(b,nullptr,TRUE); }
 // ------------------------------------------------------------------ list view helpers
@@ -374,7 +378,8 @@ static void RefreshOptionButtons(){
     auto set=[&](int id,const std::wstring& t){ for(int pg:{PG_OPTIONS,PG_HOME}) for(HWND h:g_pages[pg].buttons) if(GetDlgCtrlID(h)==id){ SetWindowTextW(h,t.c_str()); InvalidateRect(h,nullptr,TRUE); } };
     int ri=ResIndex(); std::wstring rl=ri>=0?std::wstring(kRes[ri].label):std::to_wstring(g_opt.width)+L" x "+std::to_wstring(g_opt.height);
     set(C_RES,L"Resolution: "+rl); set(C_MSAA,g_opt.msaa?L"Anti-aliasing: "+std::to_wstring(g_opt.msaa)+L"x":std::wstring(L"Anti-aliasing: Off")); set(C_SHADOW,g_opt.shadow?L"Shadow quality: "+std::to_wstring(g_opt.shadow):std::wstring(L"Shadow quality: Game default"));
-    set(H_VOICE,g_opt.voiceJP?L"Voice: Japanese":L"Voice: English");
+    bool sup=launchOptionsSupported(g_prof[g_cur].id); set(H_VOICE,!sup?L"Voice: set inside the game":(g_opt.voiceJP?L"Voice: Japanese":L"Voice: English"));
+    for(int pg:{PG_OPTIONS,PG_HOME}) for(HWND hb:g_pages[pg].buttons){ int bid=GetDlgCtrlID(hb); if(pg==PG_OPTIONS||bid==H_VOICE) EnableWindow(hb,sup?TRUE:FALSE); }
     g_toggle[O_FULLSCREEN]=g_opt.fullscreen; g_toggle[O_VOICEJP]=g_opt.voiceJP; g_toggle[O_DECIDE]=g_opt.decideReverse;
     for(HWND h:g_pages[PG_OPTIONS].buttons) InvalidateRect(h,nullptr,TRUE);
 }
@@ -497,7 +502,7 @@ static void ShowPage(int p){
     switch(p){ case PG_HOME: LoadOptionsFromProfile(); RefreshHome(); break; case PG_ADDONS: if(haveExe()&&g_scan.empty()) DoScan(); else FillAddonList(); UpdateAddonDetails(); break;
       case PG_PERF: if(!g_mon.on) SetMain(PG_PERF,"PERFORMANCE\n\nThis page watches how hard the game works your computer. It does this from OUTSIDE the game, once per second, and never touches the game.\n\n  Start Monitoring - begin watching (then play).\n  View Report - a summary you can send to whoever is helping you.\n  Export CSV - saves the numbers to a file.\n"); break;
       case PG_MEM: LaaCheck(); break; case PG_OPTIONS: LoadOptionsFromProfile(); ShowOptionsText(); break; case PG_BACKUPS: FillBackups(); break;
-      case PG_SETTINGS: LoadSettingsFromProfile(); SetMain(PG_SETTINGS,"SETTINGS\n\nThese settings are stored for each game in that game's Poneglyph folder (poneglyph.ini) and apply the next time the game starts.\n\n  Poneglyph engine OFF - Poneglyph only passes the game's graphics straight to Windows. Nothing else runs.\n  Load add-ons OFF - no mods (.asi/.dll) are loaded.\n  Frame statistics - a tiny recorder writes one summary line every few seconds. OFF by default; there is no per-frame logging.\n  Theme - Silver Chrome, Dark Purple Chrome or Black Chrome.\n"); break;
+      case PG_SETTINGS: LoadSettingsFromProfile(); SetMain(PG_SETTINGS,"SETTINGS\n\nThese settings are stored for each game in that game's .Poneglyph folder (poneglyph.ini) and apply the next time the game starts.\n\n  Poneglyph engine OFF - Poneglyph only passes the game's graphics straight to Windows. Nothing else runs.\n  Load add-ons OFF - no mods (.asi/.dll) are loaded.\n  Frame statistics - a tiny recorder writes one summary line every few seconds. OFF by default; there is no per-frame logging.\n  Theme - Silver Chrome, Dark Purple Chrome or Black Chrome.\n"); break;
       case PG_HELP: SetMain(PG_HELP,kHelpText); break; default: break; }
     for(int i=0;i<PG_COUNT;i++) if(HWND n=GetDlgItem(g_hwnd,ID_NAV+i)) InvalidateRect(n,nullptr,TRUE); InvalidateRect(g_hwnd,nullptr,FALSE);
 }

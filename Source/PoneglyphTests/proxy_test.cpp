@@ -32,12 +32,12 @@ int wmain(int argc,wchar_t** argv){
     if(argc<3){ std::printf("usage: pg_proxytest <d3d9.dll> <test_addon.asi>\n"); return 64; }
     fs::path proxy=argv[1], addon=argv[2]; std::error_code ec;
     wchar_t sys[MAX_PATH]; GetSystemDirectoryW(sys,MAX_PATH); fs::path sysd3d9=fs::path(sys)/L"d3d9.dll";
-    fs::path dir=fs::temp_directory_path()/("pg_proxytest_"+std::to_string(GetCurrentProcessId())); fs::remove_all(dir,ec); fs::create_directories(dir/"Poneglyph"/"Addons",ec);
+    fs::path dir=fs::temp_directory_path()/("pg_proxytest_"+std::to_string(GetCurrentProcessId())); fs::remove_all(dir,ec); auto pp=ProfilePaths::forGameDir(dir); fs::create_directories(pp.addons,ec);
     std::printf("== Stage B: proxy ==\n");
     auto pi=inspectPe(proxy,{true,true,false}); auto si=inspectPe(sysd3d9,{true,false,false});
     check(pi.valid&&pi.isX86(),"proxy is x86"); check(si.valid&&si.isX86(),"system d3d9.dll (SysWOW64 view) is x86: "+pathToUtf8(sysd3d9));
-    fs::copy_file(proxy,dir/"d3d9.dll",ec); fs::copy_file(addon,dir/"Poneglyph"/"Addons"/"test_addon.asi",ec); { std::ofstream m(dir/"Poneglyph"/"Addons"/"test_addon.asi.pgmeta"); m<<"[Addon]\nName=Test\nGames=all\nArch=x86\n"; }
-    { std::ofstream j(dir/"Poneglyph"/"Addons"/"bad.asi",std::ios::binary); j<<"this is not a dll"; }
+    fs::copy_file(proxy,dir/"d3d9.dll",ec); fs::copy_file(addon,pp.addons/"test_addon.asi",ec); { std::ofstream m(pp.addons/"test_addon.asi.pgmeta"); m<<"[Addon]\nName=Test\nGames=all\nArch=x86\n"; }
+    { std::ofstream j(pp.addons/"bad.asi",std::ios::binary); j<<"this is not a dll"; }
     // load proxy by full path
     HMODULE hp=LoadLibraryW((dir/"d3d9.dll").wstring().c_str()); check(hp!=nullptr,"proxy loads by full path");
     if(hp){
@@ -51,15 +51,15 @@ int wmain(int argc,wchar_t** argv){
         bool realByFullPath=false; for(auto& p:mods) if(_wcsicmp(p.c_str(),sysd3d9.wstring().c_str())==0) realByFullPath=true; check(realByFullPath,"genuine d3d9.dll was loaded from the full system path");
     }
     std::printf("== Stage C: add-on runtime ==\n");
-    IniFile st; st.load(dir/"Poneglyph"/"Logs"/"addon_status.ini"); auto recs=readLoadStatus(dir/"Poneglyph"/"Logs"/"addon_status.ini");
+    IniFile st; st.load(pp.status); auto recs=readLoadStatus(pp.status);
     bool loaded=false,skipped=false; for(auto& r:recs){ if(r.file=="test_addon.asi"&&r.result=="Loaded") loaded=true; if(r.file=="bad.asi"&&r.result=="Skipped") skipped=true; }
-    check(loaded,"valid x86 add-on loaded (status file)"); check(skipped,"invalid add-on refused (status file)"); check(fs::exists(dir/"Poneglyph"/"Addons"/"init_called.txt"),"Poneglyph_AddonInit was called");
-    check(!fs::exists(dir/"Poneglyph"/"Logs"/"loading.marker"),"no stale loading marker after a clean start"); check(fs::exists(dir/"Poneglyph"/"Logs"/"poneglyph.log"),"log file written");
+    check(loaded,"valid x86 add-on loaded (status file)"); check(skipped,"invalid add-on refused (status file)"); check(fs::exists(pp.addons/"init_called.txt"),"Poneglyph_AddonInit was called");
+    check(!fs::exists(pp.logs/"loading.marker"),"no stale loading marker after a clean start"); check(fs::exists(pp.logs/"poneglyph.log"),"log file written");
     // crash-recovery: simulate a start that died while loading the add-on
     std::printf("== crash recovery (second process) ==\n");
-    { std::ofstream m(dir/"Poneglyph"/"Logs"/"loading.marker"); m<<"test_addon.asi"; } fs::remove(dir/"Poneglyph"/"Addons"/"init_called.txt",ec);
+    { std::ofstream m(pp.logs/"loading.marker"); m<<"test_addon.asi"; } fs::remove(pp.addons/"init_called.txt",ec);
     std::wstring cmd=L"\""+std::wstring(argv[0])+L"\" --child \""+dir.wstring()+L"\""; STARTUPINFOW s{}; s.cb=sizeof s; PROCESS_INFORMATION p{};
     if(CreateProcessW(nullptr,&cmd[0],nullptr,nullptr,FALSE,0,nullptr,nullptr,&s,&p)){ WaitForSingleObject(p.hProcess,30000); DWORD ec2=99; GetExitCodeProcess(p.hProcess,&ec2); CloseHandle(p.hProcess); CloseHandle(p.hThread); check(ec2==0,"child process started and exited cleanly (exit "+std::to_string(ec2)+")"); } else check(false,"could not start child");
-    IniFile cfg; cfg.load(dir/"Poneglyph"/"poneglyph.ini"); check(!cfg.getBool("Addons","test_addon.asi",true),"add-on that never finished loading was disabled automatically"); check(!fs::exists(dir/"Poneglyph"/"Addons"/"init_called.txt"),"disabled add-on was not initialised again"); check(fs::exists(dir/"Poneglyph"/"Addons"/"test_addon.asi"),"add-on file was kept (not deleted)");
+    IniFile cfg; cfg.load(pp.config); check(!cfg.getBool("Addons","test_addon.asi",true),"add-on that never finished loading was disabled automatically"); check(!fs::exists(pp.addons/"init_called.txt"),"disabled add-on was not initialised again"); check(fs::exists(pp.addons/"test_addon.asi"),"add-on file was kept (not deleted)");
     std::printf("\n%s (%d failed)\n",g_fail?"RESULT: FAIL":"RESULT: PASS",g_fail); return g_fail?1:0;
 }

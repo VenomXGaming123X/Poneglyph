@@ -68,3 +68,15 @@
   [ ] Button sound effects (owner says which).  [ ] One Piece-style font - discuss.
   [ ] Controller priorities (Xbox/PS3/PS4/PS5/generic), ReShade, DXVK, resolution (launch options done for XIII/XIII-2), frame limiter etc. - see NOVAFIX_FEATURE_MAP.md.
   [ ] Artwork rights before publishing the One Piece icons.
+
+## I. UPDATE 6 - APPROVED DESIGN BUILT (owner: "PERFECT, I LOVE IT")
+ BUILT (awaiting Windows test):
+  [x] Welcome note "Hisashiburi dana... Mugiwara": 5 seconds, OK button, closes by itself, sunset/straw-hat drawing. (Setting: Settings > Show welcome note)
+  [x] Elbaf Aurora theme replaces Black Chrome (themes: Silver Chrome, Dark Purple Chrome, Elbaf Aurora).
+  [x] Own title bar + themed window border + themed minimise / maximise / close buttons.
+  [x] Hover highlight in the theme colour on menu items, tabs, buttons, switches.
+  [x] Dropdowns (30% see-through) for Resolution, Anti-aliasing, Shadow quality, Theme, Font, Text size, Summary, Log detail.
+  [x] Home: next-step card, step cards with pills, "Where can I find my game folder?", More information cards (no ==== / ---- lines).
+  [x] Settings: Font (Inter, Exo 2, Rajdhani, Chakra Petch, Nunito), Text size (Small/Medium/Large/Extra large), Bold, Show welcome note. Default text is 1-2 pt smaller.
+  [x] Fonts are embedded from Google Fonts (SIL OFL) when the build can download them; otherwise Segoe UI is used.
+ STILL PENDING: Other Games, Check for Update, Nakama, Donate, sound effects, One Piece font, controller/ReShade/DXVK/frame-limiter work, text language (-Lan=).

@@ -10,6 +10,7 @@
 #include "poneglyph/stats.hpp"
 #include "poneglyph/report.hpp"
 #include "poneglyph/log.hpp"
+#include "poneglyph/launchopts.hpp"
 #include <cstdio>
 #include <cstring>
 #include <fstream>
@@ -187,6 +188,17 @@ static void testGamesStats(){
     CHECK(fs::exists(T/"logs/t.log")&&fs::exists(T/"logs/t.log.1")); CHECK(!fs::exists(T/"logs/t.log.3")); CHECK(fs::file_size(T/"logs/t.log")<=400);
     ReportInput ri; ri.gameName="FFXIII-2"; ri.managerVersion="1.0.0"; auto rep=buildReport(ri); CHECK(rep.find("No measured frame data")!=std::string::npos); CHECK(rep.find("has not been started")!=std::string::npos); ri.engineStarted=true; ri.engineLastStart="2026-01-01 10:00:00"; auto rep2=buildReport(ri); CHECK(rep2.find("found no add-ons")!=std::string::npos&&rep2.find("has not been started")==std::string::npos); CHECK(rep.find("RECOMMENDATIONS")!=std::string::npos);
 }
+static void testLaunch(){
+    LaunchOptions o; CHECK(buildLaunchArgs(GameId::FFXIII,o).empty()); CHECK(validateLaunchOptions(o).empty());
+    o.fullscreen=true;o.width=1920;o.height=1080;o.msaa=4;o.shadow=2048;o.voiceJP=true;o.decideReverse=true;
+    auto a=buildLaunchArgs(GameId::FFXIII2,o); CHECK(joinArgs(a)=="-Width=1920 -Height=1080 -FullScreenMode=Force -MSAA=4 -Shadow=2048 -VoiceJPMode -DecideButtonReverse");
+    CHECK(buildLaunchArgs(GameId::LR,o).empty()&&!launchOptionsSupported(GameId::LR)&&launchOptionsSupported(GameId::FFXIII));
+    LaunchOptions b=o; b.width=0; CHECK(!validateLaunchOptions(b).empty()&&buildLaunchArgs(GameId::FFXIII,b).empty());
+    b=o; b.msaa=3; CHECK(!validateLaunchOptions(b).empty()); b=o; b.shadow=300; CHECK(!validateLaunchOptions(b).empty()); b=o; b.width=100; CHECK(!validateLaunchOptions(b).empty()); b=o; b.height=99999; CHECK(!validateLaunchOptions(b).empty());
+    b=o; b.msaa=0;b.shadow=0;b.voiceJP=false;b.decideReverse=false;b.fullscreen=false; CHECK(joinArgs(buildLaunchArgs(GameId::FFXIII,b))=="-Width=1920 -Height=1080");
+    IniFile c; saveLaunchOptions(c,o); IniFile d; d.loadFromString(c.toString()); auto r=loadLaunchOptions(d); CHECK(r.fullscreen&&r.width==1920&&r.height==1080&&r.msaa==4&&r.shadow==2048&&r.voiceJP&&r.decideReverse);
+    IniFile hostile; hostile.loadFromString("[Launch]\nWidth=1920\nHeight=1080 -Evil=1\nMSAA=4; calc.exe\n"); auto h=loadLaunchOptions(hostile); CHECK(h.height==0||h.height==1080); for(auto& x:buildLaunchArgs(GameId::FFXIII,h)) CHECK(x.find(' ')==std::string::npos&&x.find('&')==std::string::npos);
+}
 static void testRealFixtures(){
     const char* e=std::getenv("PG_FIXTURES"); if(!e){ std::printf("  (PG_FIXTURES not set: skipping real-binary checks)\n"); return; }
     fs::path F=e; struct X{ const char* f; bool laa; } xs[]={{"ffxiiiimg.exe",false},{"ffxiii2img.exe",true},{"LRFF13.exe",true}};
@@ -197,7 +209,7 @@ static void testRealFixtures(){
 }
 int main(){
     T=fs::temp_directory_path()/"pg_tests"; std::error_code ec; fs::remove_all(T,ec); fs::create_directories(T);
-    struct{const char* n; void(*f)();} tests[]={{"sha256",testSha},{"ini+util",testIniUtil},{"pe",testPe},{"laa",testLaa},{"zip",testZip},{"addons",testAddons},{"ops",testOps},{"games+stats+log+report",testGamesStats},{"real-fixtures",testRealFixtures}};
+    struct{const char* n; void(*f)();} tests[]={{"sha256",testSha},{"ini+util",testIniUtil},{"pe",testPe},{"laa",testLaa},{"zip",testZip},{"addons",testAddons},{"ops",testOps},{"games+stats+log+report",testGamesStats},{"launch-options",testLaunch},{"real-fixtures",testRealFixtures}};
     for(auto& t:tests){ int f0=g_fail; std::printf("[ RUN  ] %s\n",t.n); t.f(); std::printf("[ %s ] %s\n",g_fail==f0?" OK ":"FAIL",t.n); }
     std::printf("\n%d checks passed, %d failed\n",g_pass,g_fail); return g_fail?1:0;
 }

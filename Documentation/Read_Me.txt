@@ -28,6 +28,10 @@ Only one Direct3D 9 proxy can exist per game. Poneglyph will not overwrite it si
 4 GB FLAG
 Memory page. Makes the 32-bit game able to address up to 4 GB (never more). Backup + verification first; "Restore Original" included.
 
+GAME OPTIONS (FFXIII and FFXIII-2)
+Resolution, window mode, anti-aliasing, shadow quality, Japanese voice and swapping Confirm/Cancel. They use the games' own start-up options and apply when you press "Play the Game".
+Plug your controller in BEFORE starting the game (these games look for controllers only at start-up). Home shows which controllers Poneglyph can see.
+
 WHAT IS INCLUDED / NOT INCLUDED IN 1.0
 Included : engine proxy, deterministic add-on loading, crash recovery (auto-disables an add-on that crashed while loading),
            safe ZIP install/uninstall, 4 GB flag with backup, process monitor, optional frame-time statistics, reports, 3 themes.

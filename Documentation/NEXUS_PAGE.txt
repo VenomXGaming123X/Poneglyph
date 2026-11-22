@@ -15,7 +15,7 @@ One mod loader for all three games: loads .asi/.dll add-ons in a safe order, bac
 [*]Safe ZIP install/uninstall (path-traversal and zip-bomb protected; only files it installed are removed)
 [*]4 GB (Large Address Aware) flag with verified backup and one-click restore
 [*]Process monitor, optional lightweight frame-time statistics, before/after comparison, support report
-[*]Three themes: Silver Chrome, Dark Purple Chrome and Black Chrome
+[*]Three themes (Silver Chrome, Dark Purple Chrome, Black Chrome), Game Options for FFXIII and FFXIII-2 (resolution, window mode, anti-aliasing, shadows, Japanese voice, button swap), controller detection
 [/list]
 [size=5][b]Install[/b][/size]
 Extract anywhere, run Poneglyph.exe, choose the game's executable, press Install Poneglyph Engine. Full steps in Read_Me.txt.

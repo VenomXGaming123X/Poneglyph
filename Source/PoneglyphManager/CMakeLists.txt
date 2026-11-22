@@ -8,7 +8,7 @@ if(EXISTS "${PG_ICON_DIR}/poneglyph_silver.ico" AND EXISTS "${PG_ICON_DIR}/poneg
 else()
   message(STATUS "Poneglyph icons not found in Resources/Icons - building without custom icons")
 endif()
-add_executable(PoneglyphManager WIN32 main.cpp PoneglyphManager.rc)
+add_executable(PoneglyphManager WIN32 main.cpp controllers.cpp PoneglyphManager.rc)
 set_target_properties(PoneglyphManager PROPERTIES OUTPUT_NAME "Poneglyph")
 target_include_directories(PoneglyphManager PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(PoneglyphManager PRIVATE PoneglyphCore comctl32 comdlg32 shell32 ole32 psapi uxtheme msimg32 user32 gdi32)

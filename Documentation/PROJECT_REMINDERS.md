@@ -38,3 +38,11 @@
 
 ## F. OPEN SUGGESTION (needs owner approval): move the Manager's UI to a modern web-style UI (WebView2/HTML) for a true "2026" look:
      animations, custom fonts, sound, donation panel, all easy. Trade-off: needs the Microsoft WebView2 runtime (built into Windows 11, usually present on Windows 10).
+
+## G. DECISIONS / NOTES FROM UPDATE 3
+ - Home button order (owner): row 1 = Find My Game | Play the Game | Install Poneglyph (highlighted text); row 2 = Search a Folder for My Game | Open Game Folder | Uninstall Poneglyph (Undo).
+ - Owner likes the 4 GB page design (status card + memory bar) - implemented with REAL numbers only.
+ - Owner wants smaller tabs, fashionable fonts, richer chrome colours, bright (white/silver) frame in every theme - applied.
+ - Owner asked for language selection on Home: Voice (English/Japanese) is on Home. TEXT language needs the -Lan= values (XIII-2) - RESEARCH.
+ - Controller priority stays #1: silent detection done (Manager); hot-plug/vibration in-game needs per-game reverse engineering (see NOVAFIX_FEATURE_MAP.md).
+ - REMINDER STILL OPEN: Donation box, sound effects, One Piece font, more owner ideas, artwork rights, WebView2 UI decision.

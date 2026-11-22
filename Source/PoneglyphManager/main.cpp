@@ -54,7 +54,7 @@ enum { B_CHOOSE_EXE=200,B_SEARCH_DIR,B_INSTALL_ENGINE,B_REMOVE_ENGINE,B_LAUNCH,B
 #define WM_APP_DONE (WM_APP+1)
 struct Page { std::vector<HWND> buttons; HWND main=nullptr, second=nullptr; };
 static HINSTANCE g_inst; static HWND g_hwnd, g_status, g_progress; static Page g_pages[PG_COUNT];
-static int g_page=PG_HOME, g_theme=0, g_cur=0, g_dpi=96; static HFONT g_fBody,g_fBold,g_fTitle,g_fSmall,g_fText; static int g_nextStep=0;
+static int g_page=PG_HOME, g_theme=0, g_cur=0, g_dpi=96; static HFONT g_fBody,g_fBold,g_fTitle,g_fSmall;
 static HBRUSH g_brBg,g_brSide,g_brEdit; static std::map<int,bool> g_toggle; static int g_summarySecs=10, g_logLevel=2;
 static Logger g_mlog, g_oplog; static std::mutex g_mx; static bool g_busy=false;
 struct Profile { GameId id; fs::path exe; };
@@ -79,7 +79,7 @@ static void RunAsync(const std::string& msg,std::function<void()> work,std::func
 }
 // ------------------------------------------------------------------ settings persistence
 static void LoadManagerSettings(){
-    IniFile i; i.load(appDataDir()/"manager.ini"); g_theme=std::clamp(i.getInt("UI","Theme",0),0,kThemeCount-1); g_cur=std::clamp(i.getInt("UI","Profile",0),0,2);
+    IniFile i; i.load(appDataDir()/"manager.ini"); g_theme=std::clamp(i.getInt("UI","Theme",0),0,1); g_cur=std::clamp(i.getInt("UI","Profile",0),0,2);
     for(auto& p:g_prof){ auto gi=gameInfo(p.id); auto e=i.get(std::string("Game.")+gi->key,"Exe"); if(!e.empty()) p.exe=pathFromUtf8(e); }
 }
 static void SaveManagerSettings(){
@@ -90,37 +90,29 @@ static void SaveManagerSettings(){
 // ------------------------------------------------------------------ status computation (plain language)
 struct HomeState { std::string label, text; };
 static HomeState ComputeHome(){
-    HomeState h; auto gi=curGame(); std::string title=gi->displayName, t;
-    const std::string DONE="[ DONE ]", TODO="[ TO DO ]", WAIT="[ waiting ]", WARN="[ NEEDS YOU ]";
-    if(!haveExe()){
-        g_nextStep=B_CHOOSE_EXE; h.label="Let's begin";
-        h.text="WELCOME!\n\nLet's get "+title+" ready. It takes three small steps.\nNothing on your computer changes until you press a button AND say Yes.\n\n"
-               "STEP 1 - Find your game          "+TODO+"\n   Press the bright button  '1. Find My Game'.\n   A small window opens. Look for the file called  "+gi->exeName+"  and double-click it.\n   (It is inside the game's folder, here: "+gi->commonRelPath+")\n   Cannot find it? Press 'Search a Folder for My Game' and choose the game's main folder.\n\n"
-               "STEP 2 - Install Poneglyph        "+WAIT+"\nSTEP 3 - Play the game            "+WAIT+"\n"; return h; }
+    HomeState h; auto gi=curGame(); std::string t; std::string level="Safe";
+    t+=std::string("GAME PROFILE: ")+gi->displayName+"\n\n";
+    if(!haveExe()){ h.label="Needs attention"; h.text=t+"What was detected: no executable has been chosen for this game yet.\nWhy it matters: Poneglyph keeps separate settings, add-ons, backups and logs for each game, and needs the exact executable to do that safely.\nWhat to do next: click 'Choose Game Executable' and select "+gi->exeName+" (common location: "+gi->commonRelPath+"). Or click 'Search Folder' and pick the game's install folder.\n"; return h; }
     auto pp=curPaths(); auto chk=verifyGameExe(g_prof[g_cur].exe,g_prof[g_cur].id);
-    if(!chk.ok){ g_nextStep=B_CHOOSE_EXE; h.label="Needs attention";
-        h.text="STEP 1 - Find your game          "+WARN+"\n\nThe file that was chosen cannot be used.\n\nWhat I found : "+chk.message+"\nWhy it matters: Poneglyph only works with the real game file, so it can never harm anything else.\nWhat to do   : press '1. Find My Game' and choose  "+gi->exeName+".\n"; return h; }
-    ProxyKind k=classifyD3D9(pp.gameDir/"d3d9.dll"); IniFile cfg; cfg.load(pp.config); bool enabled=cfg.getBool("General","Enabled",true);
+    t+="Executable : "+pathToUtf8(g_prof[g_cur].exe)+"\n"; t+="Verification: "+chk.message+"\n";
+    if(!chk.ok){ h.label="Needs attention"; h.text=t+"\nWhat to do next: choose the correct executable for this game. Poneglyph will not change anything until the file is verified.\n"; return h; }
+    ProxyKind k=classifyD3D9(pp.gameDir/"d3d9.dll"); t+=std::string("Direct3D 9 proxy in game folder: ")+proxyKindText(k)+"\n";
+    IniFile cfg; cfg.load(pp.config); bool enabled=cfg.getBool("General","Enabled",true);
+    if(k==ProxyKind::None){ level="Needs attention"; t+="  -> Poneglyph engine is not installed. Click 'Install Poneglyph Engine'. Your game files are backed up first.\n"; }
+    else if(k==ProxyKind::NovaFix||k==ProxyKind::Dxvk||k==ProxyKind::Other){ level="Needs attention"; t+=std::string("  -> A ")+proxyKindText(k)+" d3d9.dll is installed. Poneglyph and another proxy cannot run together. Poneglyph will not overwrite it unless you choose 'Install' and confirm; your file is saved to the Backups folder and can be restored.\n"; }
+    else if(!enabled){ level="Disabled"; t+="  -> Poneglyph is installed but switched off in Settings (pure pass-through).\n"; }
+    else t+="  -> Poneglyph engine installed.\n";
+    t+=std::string("4 GB flag (Large Address Aware): ")+(chk.pe.laa?"ON":"OFF")+"\n";
     ScanOptions so; so.game=g_prof[g_cur].id; auto all=scanAddons(pp.addons,cfg,so); int ready=0,dis=0,bad=0; for(auto& a:all){ if(a.status==AddonStatus::Ready) ready++; else if(a.status==AddonStatus::Disabled) dis++; else bad++; }
-    auto recs=readLoadStatus(pp.status); IniFile st; bool started=st.load(pp.status)&&st.has("Engine","Written"); bool failed=false; for(auto& r:recs) if(r.result=="Failed") failed=true;
-    bool foreign=(k==ProxyKind::NovaFix||k==ProxyKind::Dxvk||k==ProxyKind::Other); std::string headline;
-    t+="STEP 1 - Find your game          "+DONE+"\n   Found and checked: "+pathToUtf8(g_prof[g_cur].exe)+"\n\n";
-    if(k==ProxyKind::None){ g_nextStep=B_INSTALL_ENGINE; headline="Next: press '2. Install Poneglyph'";
-        t+="STEP 2 - Install Poneglyph        "+TODO+"\n   Press the bright button  '2. Install Poneglyph'.\n   It first saves a safe copy of anything it replaces, and you can undo it any time.\n\nSTEP 3 - Play the game            "+WAIT+"\n"; }
-    else if(foreign){ g_nextStep=B_INSTALL_ENGINE; headline="One thing needs your attention";
-        t+="STEP 2 - Install Poneglyph        "+WARN+"\n   Another helper file ("+std::string(proxyKindText(k))+") is already installed for this game. Only one can work at a time.\n   Poneglyph will NOT replace it unless you press '2. Install Poneglyph' and say Yes. Your file is saved first and can be brought back.\n\nSTEP 3 - Play the game            "+WAIT+"\n"; }
-    else { g_nextStep=B_LAUNCH; headline=enabled?(failed||bad?"One thing needs your attention":"Everything looks good"):"Poneglyph is switched off";
-        t+="STEP 2 - Install Poneglyph        "+DONE+(enabled?"":"  (but switched OFF in Settings)")+"\n\nSTEP 3 - Play the game            "+TODO+"\n   Press  '3. Play the Game'  (or start the game from Steam as usual).\n"; }
-    t+="\n-------------------------------------------------------------\nMORE INFORMATION (you can ignore this)\n";
-    t+=std::string("   4 GB memory setting : ")+(chk.pe.laa?"ON  - the game may use up to 4 GB.":"OFF - you can turn it on in 'Memory (4 GB)'.")+"\n";
-    t+="   Mods (add-ons)      : "+std::to_string(ready)+" ready, "+std::to_string(dis)+" switched off, "+std::to_string(bad)+" with a problem (see the Add-ons page)\n";
-    if(started){ t+="   Last game start     : "+st.get("Engine","Written")+(recs.empty()?" - Poneglyph ran fine; there were no mods to load.":"")+"\n"; for(auto& r:recs){ char b[200]; snprintf(b,sizeof b,"      %-30s %-9s %.1f ms",r.file.c_str(),r.result.c_str(),r.ms); t+=b; if(r.result=="Failed") t+="   <- "+r.detail; t+="\n"; } }
-    else t+="   Last game start     : none yet\n";
-    if(g_mon.h) t+="   The game is running now. Changes you make will work after you restart the game.\n";
-    t+="   Safety copies saved : "+pathToUtf8(pp.backups)+"\n   Log files           : "+pathToUtf8(pp.logs)+"\n";
-    h.label=headline; h.text=headline+"\n=============================================================\n\n"+t; return h;
+    t+="Add-ons: "+std::to_string(ready)+" ready, "+std::to_string(dis)+" disabled, "+std::to_string(bad)+" with problems (see Add-ons page)\n";
+    if(bad&&level=="Safe") level="Needs attention";
+    auto recs=readLoadStatus(pp.status); if(!recs.empty()){ t+="\nLast game start (engine report):\n"; for(auto& r:recs){ char b[200]; snprintf(b,sizeof b,"  %-30s %-9s %.1f ms",r.file.c_str(),r.result.c_str(),r.ms); t+=b; if(r.result=="Failed") { t+="  <- "+r.detail; if(level=="Safe") level="Needs attention"; } t+="\n"; } }
+    else { IniFile st; if(st.load(pp.status)&&st.has("Engine","Written")) t+="\nLast game start with Poneglyph: "+st.get("Engine","Written")+" - the engine ran and found no add-ons to load.\n"; else t+="\nThe game has not been started with Poneglyph yet, so there are no load results.\n"; }
+    if(g_mon.h) t+="\nThe game is running now: changes to engine or add-ons need a game restart ('Restart required').\n";
+    t+="\nBackups: "+pathToUtf8(pp.backups)+"\nLogs   : "+pathToUtf8(pp.logs)+"\n";
+    h.label=level; h.text="OVERALL STATUS: "+level+"\n\n"+t; return h;
 }
-static void RefreshHome(){ auto h=ComputeHome(); SetMain(PG_HOME,h.text); SetStatus(h.label+"   |   "+curGame()->displayName); for(HWND b:g_pages[PG_HOME].buttons) InvalidateRect(b,nullptr,TRUE); }
+static void RefreshHome(){ auto h=ComputeHome(); SetMain(PG_HOME,h.text); SetStatus("Status: "+h.label+"  |  "+curGame()->displayName); }
 // ------------------------------------------------------------------ list view helpers
 static HWND MakeList(HWND parent,int id,std::initializer_list<std::pair<const wchar_t*,int>> cols){
     HWND lv=CreateWindowExW(0,WC_LISTVIEWW,L"",WS_CHILD|WS_TABSTOP|LVS_REPORT|LVS_SINGLESEL|LVS_SHOWSELALWAYS,0,0,10,10,parent,(HMENU)(INT_PTR)id,g_inst,nullptr);
@@ -180,28 +172,19 @@ static void SearchFolder(){
     PIDLIST_ABSOLUTE pidl=SHBrowseForFolderW(&bi); if(!pidl) return; wchar_t p[MAX_PATH]; BOOL ok=SHGetPathFromIDListW(pidl,p); CoTaskMemFree(pidl); if(!ok) return;
     auto res=std::make_shared<fs::path>(); GameId gid=g_prof[g_cur].id; fs::path root=p;
     RunAsync("Searching for the game executable...",[=]{ *res=findGameExe(root,gid); },[=]{
-        if(res->empty()){ Msg("Not found","No "+std::string(curGame()->exeName)+" was found inside that folder (searched 5 levels deep). Choose the folder that contains the game, or use '1. Find My Game'.",MB_ICONWARNING); SetStatus("Search finished: not found"); return; }
+        if(res->empty()){ Msg("Not found","No "+std::string(curGame()->exeName)+" was found inside that folder (searched 5 levels deep). Choose the folder that contains the game, or use 'Choose Game Executable'.",MB_ICONWARNING); SetStatus("Search finished: not found"); return; }
         auto chk=verifyGameExe(*res,gid); if(!chk.ok){ Msg("Found, but not usable",chk.message,MB_ICONWARNING); return; } g_prof[g_cur].exe=*res; SaveManagerSettings(); RefreshHome(); });
 }
-static void LaaEnable(bool ask);
 static void InstallEngine(){
-    if(!haveExe()){ Msg("Please do Step 1 first","Press '1. Find My Game' first, so Poneglyph knows which game to set up."); return; }
-    auto chk=verifyGameExe(g_prof[g_cur].exe,g_prof[g_cur].id); if(!chk.ok){ Msg("This game file cannot be used",chk.message,MB_ICONWARNING); return; }
-    if(g_mon.h){ Msg("The game is running","Please close the game first, then press this button again."); return; }
-    fs::path eng=exeDir()/"Engine"/"d3d9.dll"; std::error_code ec; if(!fs::exists(eng,ec)){ Msg("A Poneglyph file is missing","Poneglyph's own file  Engine\\d3d9.dll  is not next to Poneglyph.exe.\n\nPlease unzip the WHOLE Poneglyph download again (all files together, in one folder) and try again.\n\nLooked here: "+pathToUtf8(eng),MB_ICONERROR); return; }
+    if(!haveExe()){ Msg("Choose the game first","Select this game's executable first."); return; }
+    auto chk=verifyGameExe(g_prof[g_cur].exe,g_prof[g_cur].id); if(!chk.ok){ Msg("Cannot install",chk.message,MB_ICONWARNING); return; }
+    if(g_mon.h){ Msg("Game is running","Close the game first, then install."); return; }
+    fs::path eng=exeDir()/"Engine"/"d3d9.dll"; std::error_code ec; if(!fs::exists(eng,ec)){ Msg("Engine file missing","The file Engine\\d3d9.dll was not found next to Poneglyph.exe ("+pathToUtf8(eng)+"). Re-extract the full Poneglyph package.",MB_ICONERROR); return; }
     auto pp=curPaths(); InstallOptions io; ProxyKind k=classifyD3D9(pp.gameDir/"d3d9.dll");
     if(k==ProxyKind::NovaFix||k==ProxyKind::Dxvk||k==ProxyKind::Other){
-        if(!Ask("Another helper file is already installed",std::string("This game already has a file named d3d9.dll made by: ")+proxyKindText(k)+".\n\nWHY THIS MATTERS\nOnly one such file can work at a time.\n\nIF YOU PRESS YES\nYour current file is copied to a safe backup folder first (and checked to be an exact copy). Then Poneglyph is installed.\n\nHOW TO UNDO\nPress 'Uninstall Poneglyph (undo)' and your old file comes back.\n\nInstall Poneglyph anyway?")) return;
+        if(!Ask("Replace the existing Direct3D 9 proxy?",std::string("A ")+proxyKindText(k)+" d3d9.dll is already in this game's folder.\n\nTwo proxies cannot run together. If you continue, your current file is copied to Poneglyph\\Backups (verified by SHA-256) and Poneglyph is installed. You can go back at any time with 'Remove Poneglyph Engine'.\n\nContinue?")) return;
         io.replaceForeignProxy=true; }
-    auto res=installEngine(pp,g_prof[g_cur].id,eng,io,g_oplog);
-    if(!res.ok){ Msg("Poneglyph was NOT installed",res.message+"\n\nIf anything had been changed, it was put back the way it was.",MB_ICONWARNING); RefreshHome(); return; }
-    std::string what; for(auto& c:res.changed) what+="  - "+c+"\n";
-    Msg("Poneglyph is installed!","All done. Poneglyph is now set up for "+std::string(curGame()->displayName)+".\n\nWHAT WAS CHANGED\n"+what+"\nNOTHING ELSE on your computer was touched.\n\nTO UNDO ANYTHING\nPress 'Uninstall Poneglyph (undo)' on the Home page.");
-    RefreshHome();
-    auto pe=inspectPe(g_prof[g_cur].exe,{false,false,false});
-    if(pe.valid&&pe.isX86()&&!pe.laa){
-        if(Ask("One more optional step: the 4 GB setting","Would you like to turn on the \"4 GB setting\" for this game now?\n\nWHAT IT IS\nThis game is an older 32-bit program. By default Windows lets it use only 2 GB of memory. The 4 GB setting is a single switch inside the game's .exe file that lets it use up to 4 GB.\n\nWHY YOU MAY WANT IT\nMods, bigger textures and long play sessions can make the game run out of memory and crash. More room helps prevent that.\n\nWHAT IT DOES NOT DO\nIt does not make the game faster, and it never goes above 4 GB.\n\nIS IT SAFE?\nBefore changing anything, Poneglyph saves an exact copy of the game's .exe and checks the copy. It changes only that one switch. You can undo it any time: Memory (4 GB) page, then 'Restore Original'. (A few copy-protected editions may refuse a changed .exe. If the game will not start, use Restore Original.)\n\nYES = turn it on now      NO = skip it (you can do it later)")) LaaEnable(false);
-    }
+    auto res=installEngine(pp,g_prof[g_cur].id,eng,io,g_oplog); Msg(res.ok?"Done":"Not installed",res.message+(res.changed.empty()?"":"\n\n"+join(res.changed,"\n")),res.ok?MB_ICONINFORMATION:MB_ICONWARNING); RefreshHome();
 }
 static void RemoveEngine(){
     if(!haveExe()) return; if(g_mon.h){ Msg("Game is running","Close the game first."); return; }
@@ -275,10 +258,10 @@ static void LaaCheck(){
     auto pp=curPaths(); std::error_code ec; int n=0; if(fs::is_directory(pp.backups,ec)) for(auto& e:fs::directory_iterator(pp.backups,ec)) if(e.path().extension()==".pgbak"&&e.path().filename().string().rfind(g_prof[g_cur].exe.filename().string(),0)==0) n++;
     t+="Backups of this executable: "+std::to_string(n)+"\n\n"+kLaaText; SetMain(PG_MEM,t);
 }
-static void LaaEnable(bool ask){
+static void LaaEnable(){
     if(!haveExe()){ Msg("Choose the game first","Select this game's executable first."); return; } if(g_mon.h){ Msg("Game is running","Close the game first."); return; }
     auto p=inspectPe(g_prof[g_cur].exe,{false,false,false}); if(p.valid&&p.laa){ Msg("Already enabled","This executable is already Large Address Aware. No change needed."); return; }
-    if(ask&&!Ask("Enable the 4 GB flag?","This changes ONE flag in "+std::string(curGame()->exeName)+". A verified backup is made first and you can restore it any time.\n\nIt allows up to 4 GB of address space on 64-bit Windows. It does NOT allow more than 4 GB and does not add RAM or speed.\n\nSome copy-protected editions may reject a modified executable; if the game does not start, use 'Restore Original'.\n\nContinue?")) return;
+    if(!Ask("Enable the 4 GB flag?","This changes ONE flag in "+std::string(curGame()->exeName)+". A verified backup is made first and you can restore it any time.\n\nIt allows up to 4 GB of address space on 64-bit Windows. It does NOT allow more than 4 GB and does not add RAM or speed.\n\nSome copy-protected editions may reject a modified executable; if the game does not start, use 'Restore Original'.\n\nContinue?")) return;
     auto rep=std::make_shared<LaaReport>(); auto exe=g_prof[g_cur].exe; auto bd=curPaths().backups; std::vector<std::string> names{curGame()->exeName};
     RunAsync("Patching with backup...",[=]{ *rep=patchLaa(exe,bd,names); },[=]{ bool ok=rep->result==LaaResult::Patched||rep->result==LaaResult::AlreadyLaa; Msg(ok?"Done":"Not changed",rep->message,ok?MB_ICONINFORMATION:MB_ICONWARNING); g_mlog.log(LogLevel::Info,"LAA: %s",rep->message.c_str()); LaaCheck(); RefreshHome(); });
 }
@@ -299,11 +282,11 @@ static void FillBackups(){
     auto pp=curPaths(); std::error_code ec; if(!fs::is_directory(pp.backups,ec)){ SetWindowTextW(g_pages[PG_BACKUPS].second,L"No backups yet. Poneglyph creates them automatically before it changes any game file."); return; }
     for(auto& e:fs::directory_iterator(pp.backups,ec)){ if(!e.is_regular_file(ec)) continue; auto n=pathToUtf8(e.path().filename()); int r=ListAdd(lv,n); ListSet(lv,r,1,formatBytes(fs::file_size(e.path(),ec)));
         std::string kind=e.path().extension()==".pgbak"?(n.rfind("d3d9.dll",0)==0?"Previous d3d9.dll":"Game executable"):"Record"; ListSet(lv,r,2,kind); }
-    SetWindowTextW(g_pages[PG_BACKUPS].second,Crlf("Folder: "+pathToUtf8(pp.backups)+"\nSelect a 'Game executable' backup and click 'Restore Selected'. To get your previous d3d9.dll back, use 'Uninstall Poneglyph (undo)' on the Home page - it verifies and restores it for you.").c_str());
+    SetWindowTextW(g_pages[PG_BACKUPS].second,Crlf("Folder: "+pathToUtf8(pp.backups)+"\nSelect a 'Game executable' backup and click 'Restore Selected'. To get your previous d3d9.dll back, use 'Remove Poneglyph Engine' on the Home page - it verifies and restores it for you.").c_str());
 }
 static void RestoreSelectedBackup(){
     HWND lv=g_pages[PG_BACKUPS].main; int r=SelRow(lv); if(r<0){ Msg("Select a backup","Click a backup in the list first."); return; } wchar_t b[260]; ListView_GetItemText(lv,r,0,b,260); fs::path bk=curPaths().backups/b;
-    if(bk.filename().string().rfind(g_prof[g_cur].exe.filename().string()+".",0)!=0){ Msg("Use the Home page","Only game-executable backups are restored here. For the previous d3d9.dll use 'Uninstall Poneglyph (undo)' on Home."); return; }
+    if(bk.filename().string().rfind(g_prof[g_cur].exe.filename().string()+".",0)!=0){ Msg("Use the Home page","Only game-executable backups are restored here. For the previous d3d9.dll use 'Remove Poneglyph Engine' on Home."); return; }
     if(!Ask("Restore backup","Restore this backup over the game executable?")) return; auto res=restoreFromBackup(bk,g_prof[g_cur].exe); Msg(res.result==LaaResult::Patched?"Restored":"Not restored",res.message); RefreshHome(); FillBackups();
 }
 // ------------------------------------------------------------------ settings page
@@ -324,26 +307,21 @@ static void SaveSettings(){
     if(!c.save(pp.config)) Msg("Could not save","The settings file could not be written: "+pathToUtf8(pp.config),MB_ICONWARNING); else { SetStatus("Settings saved for "+std::string(curGame()->displayName)+". They apply the next time the game starts."); g_mlog.log(LogLevel::Info,"settings saved for %s",curGame()->key); RefreshHome(); }
 }
 static const char* kHelpText=
-"WELCOME TO PONEGLYPH\n\nPoneglyph helps your game run mods safely. You do not need to know anything technical. Follow the three steps on the Home page.\n\n"
-"THE THREE STEPS\n  1. '1. Find My Game'  - choose the game's main file (for example ffxiii2img.exe).\n  2. '2. Install Poneglyph' - Poneglyph saves safety copies first, then installs. It also offers an optional 4 GB memory setting.\n  3. '3. Play the Game' - or start the game from Steam as you always do.\n\n"
-"TO ADD A MOD\n  Go to 'Add-ons', press 'Install ZIP...' and choose the mod's .zip file. Poneglyph checks it is safe and 32-bit before installing. You can switch any mod off and on again without deleting it.\n\n"
-"TO UNDO EVERYTHING\n  Home page, press 'Uninstall Poneglyph (undo)'. Your old files come back. Your saves and mods are never deleted.\n\n"
-"WHAT THE WORDS ON HOME MEAN\n  Everything looks good - nothing to do.     One thing needs your attention - read the lines on Home.     Poneglyph is switched off - turn it on in Settings.\n\n"
-"IF THE GAME WILL NOT START\n  Poneglyph turns a mod off by itself if the last start crashed while loading it. You can also use 'Uninstall Poneglyph (undo)'. Then press Help > 'Create Support Report' and send the file to the person helping you, together with Logs\\poneglyph.log.\n\n"
-"NOT AVAILABLE YET (planned)\n  Controller support (Xbox / PlayStation / generic), ReShade, DXVK, resolution and window options, frame limiter. They will be added one at a time and tested before release.\n";
+"QUICK START (5 steps)\n1. Home > 'Choose Game Executable' (or 'Search Folder') and pick your game. Repeat for each game you own using the three tabs at the top.\n2. Home > 'Install Poneglyph Engine'. If another d3d9.dll (for example NovaFix) is already there, you are asked first and your file is backed up.\n3. Add-ons > 'Install ZIP...' to add a mod, or copy .asi/.dll files into the game's Poneglyph\\Addons folder, then 'Scan Add-ons'.\n4. Home > 'Launch Game' (or start it from Steam).\n5. Something wrong? Home > 'Remove Poneglyph Engine' returns the game to how it was.\n\n"
+"STATUS WORDS\nSafe - nothing needs attention.   Needs attention - read the explanation on Home.   Disabled - switched off in Settings.   Restart required - the game is running; restart it for changes.\n\n"
+"IF THE GAME WILL NOT START\nPoneglyph turns off an add-on automatically if the previous start crashed while loading it. You can also set Settings > 'Poneglyph engine' OFF (pure pass-through) or remove the engine on Home. Send Poneglyph\\Logs\\poneglyph.log and a support report when asking for help.\n\n"
+"WHAT IS NOT INCLUDED IN v1.0\nIn-game overlay, per-callback add-on timing, shader/renderer replacement and game-specific memory patches. Only verified features are shipped.\n";
 // ------------------------------------------------------------------ chrome drawing
 static COLORREF Mix(COLORREF a,COLORREF b,double t){ return RGB((int)(GetRValue(a)*(1-t)+GetRValue(b)*t),(int)(GetGValue(a)*(1-t)+GetGValue(b)*t),(int)(GetBValue(a)*(1-t)+GetBValue(b)*t)); }
 static void VGrad(HDC dc,const RECT& r,COLORREF top,COLORREF bot){
     TRIVERTEX v[2]={{r.left,r.top,(COLOR16)(GetRValue(top)<<8),(COLOR16)(GetGValue(top)<<8),(COLOR16)(GetBValue(top)<<8),0},{r.right,r.bottom,(COLOR16)(GetRValue(bot)<<8),(COLOR16)(GetGValue(bot)<<8),(COLOR16)(GetBValue(bot)<<8),0}};
     GRADIENT_RECT g{0,1}; GradientFill(dc,v,2,&g,1,GRADIENT_FILL_RECT_V);
 }
-static void Chrome(HDC dc,RECT r,bool pressed,bool selected,bool disabled,bool primary=false){
-    int rad=S(14); HRGN rg=CreateRoundRectRgn(r.left,r.top,r.right+1,r.bottom+1,rad,rad); SelectClipRgn(dc,rg); bool hi=selected||primary;
-    COLORREF base=hi?T().accent:T().panelLo; COLORREF top=Mix(base,RGB(255,255,255),hi?0.10:0.07), bot=base;
-    if(pressed){ top=Mix(top,RGB(0,0,0),0.20); bot=Mix(bot,RGB(0,0,0),0.20); }
-    if(disabled){ top=Mix(top,T().bg,0.65); bot=Mix(bot,T().bg,0.65); }
-    VGrad(dc,r,top,bot); SelectClipRgn(dc,nullptr);
-    HBRUSH bb=CreateSolidBrush(hi?Mix(T().accent,RGB(255,255,255),0.25):T().border); FrameRgn(dc,rg,bb,1,1); DeleteObject(bb); DeleteObject(rg);
+static void Chrome(HDC dc,RECT r,bool pressed,bool selected,bool disabled){
+    int rad=S(10); HRGN rg=CreateRoundRectRgn(r.left,r.top,r.right+1,r.bottom+1,rad,rad); SelectClipRgn(dc,rg);
+    COLORREF top=selected?T().accent:(pressed?T().panelLo:T().panelHi), bot=selected?Mix(T().accent,T().panelLo,0.6):(pressed?T().panelHi:T().panelLo); if(disabled){ top=Mix(top,T().bg,0.6); bot=Mix(bot,T().bg,0.6); }
+    VGrad(dc,r,top,bot); RECT hl=r; hl.bottom=hl.top+1; HBRUSH hb=CreateSolidBrush(Mix(top,RGB(255,255,255),0.35)); FillRect(dc,&hl,hb); DeleteObject(hb); SelectClipRgn(dc,nullptr);
+    HBRUSH bb=CreateSolidBrush(selected?T().accent:T().border); FrameRgn(dc,rg,bb,1,1); DeleteObject(bb); DeleteObject(rg);
 }
 static void DrawOwner(DRAWITEMSTRUCT* d){
     int id=(int)d->CtlID; HDC dc=d->hDC; RECT r=d->rcItem; bool pressed=(d->itemState&ODS_SELECTED)!=0, dis=(d->itemState&ODS_DISABLED)!=0; wchar_t txt[160]; GetWindowTextW(d->hwndItem,txt,160);
@@ -355,7 +333,7 @@ static void DrawOwner(DRAWITEMSTRUCT* d){
         RECT tr=r; tr.left=bx.right+S(10); SelectObject(dc,g_fBody); SetTextColor(dc,T().text); DrawTextW(dc,txt,-1,&tr,DT_LEFT|DT_VCENTER|DT_SINGLELINE); if(d->itemState&ODS_FOCUS){ RECT f=r; InflateRect(&f,-1,-1); DrawFocusRect(dc,&f); } return; }
     if(nav){ bool sel=(id-ID_NAV)==g_page; if(sel) Chrome(dc,r,pressed,true,false); else { HBRUSH b=CreateSolidBrush(T().sidebar); FillRect(dc,&r,b); DeleteObject(b); if(pressed) Chrome(dc,r,true,false,false); }
         RECT tr=r; tr.left+=S(16); SelectObject(dc,sel?g_fBold:g_fBody); SetTextColor(dc,sel?T().accentText:T().text); DrawTextW(dc,txt,-1,&tr,DT_LEFT|DT_VCENTER|DT_SINGLELINE); return; }
-    bool sel=tab&&(id-ID_PROFILE)==g_cur; bool primary=(id==g_nextStep)||id==B_SAVE_SETTINGS; Chrome(dc,r,pressed,sel,dis,primary); SelectObject(dc,(sel||tab||primary)?g_fBold:g_fBody); SetTextColor(dc,dis?T().dim:((sel||primary)?T().accentText:T().text)); RECT tr=r; InflateRect(&tr,-S(6),0);
+    bool sel=tab&&(id-ID_PROFILE)==g_cur; Chrome(dc,r,pressed,sel,dis); SelectObject(dc,(sel||tab)?g_fBold:g_fBody); SetTextColor(dc,dis?T().dim:(sel?T().accentText:T().text)); RECT tr=r; InflateRect(&tr,-S(6),0);
     DrawTextW(dc,txt,-1,&tr,DT_CENTER|DT_VCENTER|DT_SINGLELINE|DT_END_ELLIPSIS); if(d->itemState&ODS_FOCUS){ RECT f=r; InflateRect(&f,-S(3),-S(3)); DrawFocusRect(dc,&f); }
 }
 static LRESULT CALLBACK HeaderProc(HWND h,UINT m,WPARAM w,LPARAM l,UINT_PTR,DWORD_PTR){
@@ -375,18 +353,17 @@ static void ThemeLists(){
     for(int pg:{PG_ADDONS,PG_BACKUPS}){ HWND lv=g_pages[pg].main; if(!lv) continue; ListView_SetBkColor(lv,T().listAlt); ListView_SetTextBkColor(lv,T().listAlt); ListView_SetTextColor(lv,T().text); }
 }
 static void ApplyFonts(){
-    if(g_fBody){ DeleteObject(g_fBody); DeleteObject(g_fBold); DeleteObject(g_fTitle); DeleteObject(g_fSmall); DeleteObject(g_fText); }
+    if(g_fBody){ DeleteObject(g_fBody); DeleteObject(g_fBold); DeleteObject(g_fTitle); DeleteObject(g_fSmall); }
     auto mk=[&](int pt,int wt){ return CreateFontW(-MulDiv(pt,g_dpi,72),0,0,0,wt,FALSE,FALSE,FALSE,DEFAULT_CHARSET,OUT_DEFAULT_PRECIS,CLIP_DEFAULT_PRECIS,CLEARTYPE_QUALITY,DEFAULT_PITCH|FF_DONTCARE,L"Segoe UI"); };
-    g_fBody=mk(11,FW_NORMAL); g_fBold=mk(11,FW_SEMIBOLD); g_fTitle=mk(20,FW_SEMIBOLD); g_fSmall=mk(10,FW_NORMAL); g_fText=mk(12,FW_NORMAL);
+    g_fBody=mk(10,FW_NORMAL); g_fBold=mk(10,FW_SEMIBOLD); g_fTitle=mk(17,FW_SEMIBOLD); g_fSmall=mk(9,FW_NORMAL);
     EnumChildWindows(g_hwnd,[](HWND c,LPARAM)->BOOL{ SendMessageW(c,WM_SETFONT,(WPARAM)g_fBody,TRUE); return TRUE; },0);
     for(int pg:{PG_ADDONS,PG_BACKUPS}){ HWND lv=g_pages[pg].main; if(lv) SendMessageW(ListView_GetHeader(lv),WM_SETFONT,(WPARAM)g_fBold,TRUE); }
-    for(int i=0;i<PG_COUNT;i++){ bool listPage=(i==PG_ADDONS||i==PG_BACKUPS); HWND e=listPage?g_pages[i].second:g_pages[i].main; if(e) SendMessageW(e,WM_SETFONT,(WPARAM)g_fText,TRUE); }
     SendMessageW(g_status,WM_SETFONT,(WPARAM)g_fSmall,TRUE);
 }
 static void ApplyTheme(){
     if(g_brBg){ DeleteObject(g_brBg); DeleteObject(g_brSide); DeleteObject(g_brEdit); } g_brBg=CreateSolidBrush(T().bg); g_brSide=CreateSolidBrush(T().sidebar); g_brEdit=CreateSolidBrush(T().listAlt);
-    ThemeLists(); HICON ic=(HICON)LoadImageW(g_inst,MAKEINTRESOURCEW((g_theme==1?IDI_PG_PURPLE:IDI_PG_SILVER)),IMAGE_ICON,0,0,LR_DEFAULTSIZE); if(ic) SendMessageW(g_hwnd,WM_SETICON,ICON_BIG,(LPARAM)ic);
-    HICON sm=(HICON)LoadImageW(g_inst,MAKEINTRESOURCEW((g_theme==1?IDI_PG_PURPLE:IDI_PG_SILVER)),IMAGE_ICON,GetSystemMetrics(SM_CXSMICON),GetSystemMetrics(SM_CYSMICON),0); if(sm) SendMessageW(g_hwnd,WM_SETICON,ICON_SMALL,(LPARAM)sm);
+    ThemeLists(); HICON ic=(HICON)LoadImageW(g_inst,MAKEINTRESOURCEW(g_theme==0?IDI_PG_SILVER:IDI_PG_PURPLE),IMAGE_ICON,0,0,LR_DEFAULTSIZE); if(ic) SendMessageW(g_hwnd,WM_SETICON,ICON_BIG,(LPARAM)ic);
+    HICON sm=(HICON)LoadImageW(g_inst,MAKEINTRESOURCEW(g_theme==0?IDI_PG_SILVER:IDI_PG_PURPLE),IMAGE_ICON,GetSystemMetrics(SM_CXSMICON),GetSystemMetrics(SM_CYSMICON),0); if(sm) SendMessageW(g_hwnd,WM_SETICON,ICON_SMALL,(LPARAM)sm);
     RefreshSettingButtons(); RedrawWindow(g_hwnd,nullptr,nullptr,RDW_INVALIDATE|RDW_ERASE|RDW_ALLCHILDREN|RDW_UPDATENOW);
 }
 static void ShowPage(int p){
@@ -399,7 +376,7 @@ static void Layout(){
     int y=hh+S(14); for(int i=0;i<PG_COUNT;i++){ SetWindowPos(GetDlgItem(g_hwnd,ID_NAV+i),nullptr,S(12),y,sw-S(24),S(44),SWP_NOZORDER); y+=S(48); }
     int tabsX=sw+pad, tabW=std::min<int>(S(250),(int)((rc.right-tabsX-pad)/3-S(6))); for(int i=0;i<3;i++) SetWindowPos(GetDlgItem(g_hwnd,ID_PROFILE+i),nullptr,tabsX+i*(tabW+S(8)),S(14),tabW,S(40),SWP_NOZORDER);
     SetWindowPos(g_status,nullptr,sw+pad,rc.bottom-sh,rc.right-sw-pad-S(190),sh,SWP_NOZORDER); SetWindowPos(g_progress,nullptr,rc.right-S(180),rc.bottom-sh+S(10),S(164),S(14),SWP_NOZORDER);
-    RECT c={sw+pad,hh+pad,rc.right-pad,rc.bottom-sh-S(8)}; int bw=S(236), bh=S(46), gap=S(10);
+    RECT c={sw+pad,hh+pad,rc.right-pad,rc.bottom-sh-S(8)}; int bw=S(196), bh=S(38), gap=S(8);
     for(int i=0;i<PG_COUNT;i++){ auto& pg=g_pages[i]; int x=c.left,yy=c.top; for(HWND b:pg.buttons){ if(x+bw>c.right&&x>c.left){ x=c.left; yy+=bh+gap; } SetWindowPos(b,nullptr,x,yy,bw,bh,SWP_NOZORDER); x+=bw+gap; }
         int top=yy+(pg.buttons.empty()?0:bh+S(12)); int bottom=c.bottom;
         if(pg.main&&pg.second){ int split=top+(bottom-top)*58/100; SetWindowPos(pg.main,nullptr,c.left,top,c.right-c.left,split-top,SWP_NOZORDER); SetWindowPos(pg.second,nullptr,c.left,split+S(8),c.right-c.left,bottom-split-S(8),SWP_NOZORDER); }
@@ -411,7 +388,7 @@ static void BuildUi(){
     g_progress=CreateWindowExW(0,PROGRESS_CLASSW,L"",WS_CHILD|PBS_MARQUEE,0,0,10,10,g_hwnd,(HMENU)9002,g_inst,nullptr); SetWindowTheme(g_progress,L"",L"");
     for(int i=0;i<PG_COUNT;i++) CreateWindowExW(0,L"BUTTON",kPageNames[i],WS_CHILD|WS_VISIBLE|WS_TABSTOP|BS_OWNERDRAW,0,0,10,10,g_hwnd,(HMENU)(INT_PTR)(ID_NAV+i),g_inst,nullptr);
     for(int i=0;i<3;i++) CreateWindowExW(0,L"BUTTON",W(gameInfo(g_prof[i].id)->displayName).c_str(),WS_CHILD|WS_VISIBLE|WS_TABSTOP|BS_OWNERDRAW,0,0,10,10,g_hwnd,(HMENU)(INT_PTR)(ID_PROFILE+i),g_inst,nullptr);
-    auto& H=g_pages[PG_HOME]; MakeBtn(PG_HOME,B_CHOOSE_EXE,L"1. Find My Game"); MakeBtn(PG_HOME,B_SEARCH_DIR,L"Search a Folder for My Game"); MakeBtn(PG_HOME,B_INSTALL_ENGINE,L"2. Install Poneglyph"); MakeBtn(PG_HOME,B_REMOVE_ENGINE,L"Uninstall Poneglyph (undo)"); MakeBtn(PG_HOME,B_LAUNCH,L"3. Play the Game"); MakeBtn(PG_HOME,B_OPEN_GAME,L"Open Game Folder"); H.main=MakeEdit(ID_EDIT);
+    auto& H=g_pages[PG_HOME]; MakeBtn(PG_HOME,B_CHOOSE_EXE,L"Choose Game Executable"); MakeBtn(PG_HOME,B_SEARCH_DIR,L"Search Folder"); MakeBtn(PG_HOME,B_INSTALL_ENGINE,L"Install Poneglyph Engine"); MakeBtn(PG_HOME,B_REMOVE_ENGINE,L"Remove Poneglyph Engine"); MakeBtn(PG_HOME,B_LAUNCH,L"Launch Game"); MakeBtn(PG_HOME,B_OPEN_GAME,L"Open Game Folder"); H.main=MakeEdit(ID_EDIT);
     auto& A=g_pages[PG_ADDONS]; MakeBtn(PG_ADDONS,B_SCAN,L"Scan Add-ons"); MakeBtn(PG_ADDONS,B_ENABLE,L"Enable"); MakeBtn(PG_ADDONS,B_DISABLE,L"Disable"); MakeBtn(PG_ADDONS,B_INSTALL_ZIP,L"Install ZIP..."); MakeBtn(PG_ADDONS,B_REMOVE_PKG,L"Remove Package"); MakeBtn(PG_ADDONS,B_OPEN_ADDONS,L"Open Add-ons Folder");
     A.main=MakeList(g_hwnd,ID_LIST_ADDONS,{{L"Add-on",S(230)},{L"Status",S(150)},{L"Order",S(60)},{L"Architecture",S(110)},{L"Size",S(80)},{L"Compatibility",S(260)},{L"Details",S(420)}}); A.second=MakeEdit(ID_EDIT+1);
     MakeBtn(PG_PERF,B_MON_START,L"Start Monitoring"); MakeBtn(PG_PERF,B_MON_STOP,L"Stop Monitoring"); MakeBtn(PG_PERF,B_LAUNCH_MON,L"Launch + Monitor"); MakeBtn(PG_PERF,B_EXPORT_CSV,L"Export CSV"); MakeBtn(PG_PERF,B_REPORT,L"View Report"); MakeBtn(PG_PERF,B_SAVE_REPORT,L"Save Report"); MakeBtn(PG_PERF,B_COMPARE,L"Compare Frame Data..."); g_pages[PG_PERF].main=MakeEdit(ID_EDIT+2);
@@ -433,12 +410,12 @@ static void OnCommand(int id){
     case B_SCAN: DoScan(); break; case B_ENABLE: SetEnabledSel(true); break; case B_DISABLE: SetEnabledSel(false); break; case B_INSTALL_ZIP: InstallZip(); break; case B_REMOVE_PKG: RemovePkg(); break; case B_OPEN_ADDONS: if(haveExe()) OpenFolder(curPaths().addons); break;
     case B_MON_START: MonitorStart(); break; case B_MON_STOP: MonitorStop(); SetStatus("Monitoring stopped."); break; case B_LAUNCH_MON: MonitorStart(); LaunchGame(); break;
     case B_EXPORT_CSV: ExportCsv(); break; case B_REPORT: ShowReport(); break; case B_SAVE_REPORT: SaveReport(); break; case B_COMPARE: CompareFrames(); break;
-    case B_LAA_CHECK: LaaCheck(); break; case B_LAA_ENABLE: LaaEnable(true); break; case B_LAA_RESTORE: LaaRestore(); break;
+    case B_LAA_CHECK: LaaCheck(); break; case B_LAA_ENABLE: LaaEnable(); break; case B_LAA_RESTORE: LaaRestore(); break;
     case B_BK_RESTORE: RestoreSelectedBackup(); break; case B_BK_OPEN: if(haveExe()) OpenFolder(curPaths().backups); break;
     case T_ENABLED: case T_LOADADDONS: case T_FRAMESTATS: g_toggle[id]=!g_toggle[id]; for(HWND h:g_pages[PG_SETTINGS].buttons) InvalidateRect(h,nullptr,TRUE); break;
     case C_SUMMARY: { int i=0; for(int k=0;k<4;k++) if(kSummary[k]==g_summarySecs) i=k; g_summarySecs=kSummary[(i+1)%4]; RefreshSettingButtons(); break; }
     case C_LOGLEVEL: g_logLevel=(g_logLevel+1)%4; RefreshSettingButtons(); break;
-    case C_THEME: g_theme=(g_theme+1)%kThemeCount; SaveManagerSettings(); ApplyTheme(); break;
+    case C_THEME: g_theme=1-g_theme; SaveManagerSettings(); ApplyTheme(); break;
     case B_SAVE_SETTINGS: SaveSettings(); break;
     case B_README: { fs::path r=exeDir()/"Read_Me.txt"; ShellExecuteW(g_hwnd,L"open",r.wstring().c_str(),nullptr,nullptr,SW_SHOW); break; }
     case B_OPEN_LOGS: if(haveExe()) OpenFolder(curPaths().logs); else OpenFolder(appDataDir()); break; case B_SUPPORT: if(haveExe()) SaveReport(true); else Msg("Choose the game first","Select this game's executable first."); break;

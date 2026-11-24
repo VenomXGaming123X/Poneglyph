@@ -22,7 +22,7 @@ struct ExeCheck { bool ok=false; GameId id=GameId::Unknown; std::string message;
 ExeCheck verifyGameExe(const std::filesystem::path& exe, GameId expected);
 // Folder layout used for a given game directory (exe directory).
 struct ProfilePaths {
-    std::filesystem::path gameDir, root, addons, logs, backups, config, status, legacyRoot;   // root=".Poneglyph", addons=".Poneglyph-Addons" (legacyRoot="Poneglyph", used only for migration)
+    std::filesystem::path gameDir, root, addons, logs, backups, config, status, legacyRoot, renderers;   // root=".Poneglyph", addons=".Poneglyph-Addons" (legacyRoot="Poneglyph", used only for migration)
     static ProfilePaths forGameDir(const std::filesystem::path& dir);
 };
 }

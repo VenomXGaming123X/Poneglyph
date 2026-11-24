@@ -40,6 +40,6 @@ ExeCheck verifyGameExe(const fs::path& exe,GameId expected){
 }
 ProfilePaths ProfilePaths::forGameDir(const fs::path& d){
     ProfilePaths p; p.gameDir=d; p.root=d/".Poneglyph"; p.legacyRoot=d/"Poneglyph"; p.addons=d/".Poneglyph-Addons"; p.logs=p.root/"Logs"; p.backups=p.root/"Backups";
-    p.config=p.root/"poneglyph.ini"; p.status=p.logs/"addon_status.ini"; return p;
+    p.config=p.root/"poneglyph.ini"; p.renderers=p.root/"Renderers"; p.status=p.logs/"addon_status.ini"; return p;
 }
 }

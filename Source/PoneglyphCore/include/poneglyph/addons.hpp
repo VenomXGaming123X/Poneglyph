@@ -32,7 +32,7 @@ std::vector<const AddonEntry*> loadList(const std::vector<AddonEntry>& all);
 
 // ---- engine -> manager status exchange
 struct AddonLoadRecord { std::string key, file, result, detail; double ms=0; };
-bool writeLoadStatus(const std::filesystem::path& file,const std::vector<AddonLoadRecord>& recs,const std::string& game,const std::string& engineVersion);
+bool writeLoadStatus(const std::filesystem::path& file,const std::vector<AddonLoadRecord>& recs,const std::string& game,const std::string& engineVersion,const std::string& renderer="");
 std::vector<AddonLoadRecord> readLoadStatus(const std::filesystem::path& file);
 // ---- crash recovery: a marker left behind means that add-on never finished loading.
 std::string applyCrashRecovery(const std::filesystem::path& markerFile,const std::filesystem::path& cfgFile,std::string& message);

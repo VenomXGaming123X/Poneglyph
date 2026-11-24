@@ -149,7 +149,7 @@ static void testAddons(){
     auto cy=scanAddons(T/"cyc",IniFile(),so); CHECK(cy.size()==2&&cy[0].status==AddonStatus::DependencyCycle&&cy[1].status==AddonStatus::DependencyCycle);
     // crash recovery
     { std::ofstream m(T/"marker.txt"); m<<"c1.asi\n"; } std::string msg; auto k=applyCrashRecovery(T/"marker.txt",T/"rc.ini",msg); CHECK(k=="c1.asi"&&!fs::exists(T/"marker.txt")); IniFile rc; rc.load(T/"rc.ini"); CHECK(!rc.getBool("Addons","c1.asi",true));
-    std::vector<AddonLoadRecord> recs={{"a","a.asi","Loaded","",1.5},{"b","b.asi","Failed","err 193",0}}; CHECK(writeLoadStatus(T/"st.ini",recs,"ffxiii2","1.0.0")); auto back=readLoadStatus(T/"st.ini"); CHECK(back.size()==2&&back[1].result=="Failed"&&back[0].ms>1.4);
+    std::vector<AddonLoadRecord> recs={{"a","a.asi","Loaded","",1.5},{"b","b.asi","Failed","err 193",0}}; CHECK(writeLoadStatus(T/"st2.ini",recs,"ffxiii","1.0.0","dxvk")); { IniFile rs; rs.load(T/"st2.ini"); CHECK(rs.get("Engine","Renderer")=="dxvk"); } CHECK(ProfilePaths::forGameDir(T/"g").renderers==T/"g"/".Poneglyph"/"Renderers"); CHECK(writeLoadStatus(T/"st.ini",recs,"ffxiii2","1.0.0")); auto back=readLoadStatus(T/"st.ini"); CHECK(back.size()==2&&back[1].result=="Failed"&&back[0].ms>1.4);
 }
 static void testOps(){
     fs::path G=T/"game"; fs::remove_all(G); wr(G/"ffxiii2img.exe",makePe(0x14c,0x0102,{},0));

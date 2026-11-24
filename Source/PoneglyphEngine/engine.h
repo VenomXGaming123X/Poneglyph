@@ -18,6 +18,8 @@ namespace pgengine {
 extern HMODULE g_self;                 // this DLL
 extern pg::Logger g_log;
 // proxy.cpp
+void SetRealD3D9Override(const wchar_t* fullPath);   // DXVK (or another d3d9.dll) to chain to instead of the Windows one
+bool UsingDxvk();
 bool EnsureRealD3D9();                 // loads the genuine system DLL by full path (once); false on failure
 FARPROC RealProc(int index);           // nullptr if unavailable - callers MUST check
 enum { IDX_Direct3DCreate9, IDX_Direct3DCreate9Ex, IDX_Direct3DCreate9On12, IDX_Direct3DCreate9On12Ex,

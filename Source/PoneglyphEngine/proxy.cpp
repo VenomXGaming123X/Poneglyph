@@ -12,19 +12,36 @@ static INIT_ONCE g_once=INIT_ONCE_STATIC_INIT;
 static const char* kNames[IDX_COUNT]={"Direct3DCreate9","Direct3DCreate9Ex","Direct3DCreate9On12","Direct3DCreate9On12Ex",
  "D3DPERF_BeginEvent","D3DPERF_EndEvent","D3DPERF_GetStatus","D3DPERF_QueryRepeatFrame","D3DPERF_SetMarker","D3DPERF_SetOptions",
  "D3DPERF_SetRegion","DebugSetLevel","DebugSetMute","Direct3D9EnableMaximizedWindowedModeShim","Direct3DShaderValidatorCreate9","PSGPError","PSGPSampleTexture"};
+static wchar_t g_override[MAX_PATH]={0}; static bool g_dxvk=false;
+void SetRealD3D9Override(const wchar_t* p){ lstrcpynW(g_override,p,MAX_PATH); }
+bool UsingDxvk(){ return g_dxvk; }
+// Loads a d3d9.dll by FULL path and refuses it if it is this module, if Windows reports a different path, or if it has no Direct3DCreate9.
+static HMODULE LoadChecked(const wchar_t* full,const char* what){
+    HMODULE h=LoadLibraryExW(full,nullptr,LOAD_WITH_ALTERED_SEARCH_PATH);
+    if(!h){ g_log.log(pg::LogLevel::Error,"Could not load %s (error %lu).",what,GetLastError()); return nullptr; }
+    if(h==g_self){ g_log.log(pg::LogLevel::Error,"Refusing to forward to myself (self-load detected)."); return nullptr; }
+    wchar_t got[MAX_PATH]; DWORD gl=GetModuleFileNameW(h,got,MAX_PATH);
+    if(gl==0||lstrcmpiW(got,full)!=0){ g_log.log(pg::LogLevel::Error,"Loaded %s from an unexpected path - not forwarding.",what); FreeLibrary(h); return nullptr; }
+    if(!GetProcAddress(h,"Direct3DCreate9")){ g_log.log(pg::LogLevel::Error,"%s has no Direct3DCreate9 - not forwarding.",what); FreeLibrary(h); return nullptr; }
+    return h;
+}
 static BOOL CALLBACK LoadRealOnce(PINIT_ONCE,PVOID,PVOID*){
-    wchar_t sysdir[MAX_PATH]; UINT n=GetSystemDirectoryW(sysdir,MAX_PATH);   // SysWOW64 for a 32-bit process on 64-bit Windows
-    if(n==0||n>=MAX_PATH-16){ g_log.log(pg::LogLevel::Error,"GetSystemDirectory failed (%lu)",GetLastError()); return TRUE; }
-    wchar_t full[MAX_PATH]; lstrcpyW(full,sysdir); lstrcatW(full,L"\\d3d9.dll");
-    g_real=LoadLibraryW(full);
-    if(!g_real){ g_log.log(pg::LogLevel::Error,"Could not load the genuine system d3d9.dll (error %lu).",GetLastError()); return TRUE; }
-    if(g_real==g_self){ g_log.log(pg::LogLevel::Error,"Refusing to forward to myself (self-load detected)."); g_real=nullptr; return TRUE; }
-    wchar_t got[MAX_PATH]; DWORD gl=GetModuleFileNameW(g_real,got,MAX_PATH);
-    if(gl==0||lstrcmpiW(got,full)!=0){ g_log.log(pg::LogLevel::Error,"Loaded module path does not match the system path - not forwarding."); FreeLibrary(g_real); g_real=nullptr; return TRUE; }
+    if(g_override[0]){
+        g_real=LoadChecked(g_override,"the DXVK d3d9.dll");
+        if(g_real){ g_dxvk=true; g_log.log(pg::LogLevel::Info,"Chained to DXVK (Vulkan) by full path."); }
+        else g_log.log(pg::LogLevel::Warn,"DXVK could not be used. Falling back to the Windows Direct3D 9.");
+    }
+    if(!g_real){
+        wchar_t sysdir[MAX_PATH]; UINT n=GetSystemDirectoryW(sysdir,MAX_PATH);   // SysWOW64 for a 32-bit process on 64-bit Windows
+        if(n==0||n>=MAX_PATH-16){ g_log.log(pg::LogLevel::Error,"GetSystemDirectory failed (%lu)",GetLastError()); return TRUE; }
+        wchar_t full[MAX_PATH]; lstrcpyW(full,sysdir); lstrcatW(full,L"\\d3d9.dll");
+        g_real=LoadChecked(full,"the genuine system d3d9.dll");
+        if(!g_real) return TRUE;
+    }
     int resolved=0;
-    for(int i=0;i<IDX_COUNT;i++){ g_fn[i]=GetProcAddress(g_real,kNames[i]); if(g_fn[i]) resolved++; else g_log.log(i<2?pg::LogLevel::Error:pg::LogLevel::Info,"export %s not present in system d3d9.dll",kNames[i]); }
+    for(int i=0;i<IDX_COUNT;i++){ g_fn[i]=GetProcAddress(g_real,kNames[i]); if(g_fn[i]) resolved++; else g_log.log(i<2?pg::LogLevel::Error:pg::LogLevel::Info,"export %s not present in the forwarded d3d9.dll",kNames[i]); }
     for(int i=0;i<IDX_COUNT;i++) pg_thunk_tab[i]=g_fn[i];
-    g_log.log(pg::LogLevel::Info,"Forwarding to genuine d3d9.dll (full path load), %d/%d exports resolved.",resolved,(int)IDX_COUNT);
+    g_log.log(pg::LogLevel::Info,"Forwarding to %s (full path load), %d/%d exports resolved.",g_dxvk?"DXVK":"the genuine Windows d3d9.dll",resolved,(int)IDX_COUNT);
     if(!g_fn[IDX_Direct3DCreate9]){ g_log.log(pg::LogLevel::Error,"Direct3DCreate9 unresolved - the game cannot start through this proxy."); }
     return TRUE;
 }

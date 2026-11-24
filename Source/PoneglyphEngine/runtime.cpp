@@ -33,6 +33,22 @@ static std::wstring widen(const std::string& s){
 }
 static double msSince(const LARGE_INTEGER& a){ LARGE_INTEGER b,f; QueryPerformanceCounter(&b); QueryPerformanceFrequency(&f); return (double)(b.QuadPart-a.QuadPart)*1000.0/(double)f.QuadPart; }
 
+static std::filesystem::path g_rendererMarker;
+static DWORD WINAPI RendererHealthThread(LPVOID){ Sleep(20000); std::error_code ec; std::filesystem::remove(g_rendererMarker,ec); g_log.log(pg::LogLevel::Info,"DXVK health check passed: the game is still running after 20 seconds."); return 0; }
+// DXVK is chained (by full path) only when the owner chose it in Game Options AND its file is valid. A marker file left behind means the last
+// DXVK start did not stay alive for 20 seconds: then the engine switches back to the Windows Direct3D 9 by itself and says so in the log.
+static void RendererSetup(pg::IniFile& cfg){
+    if(pg::toLower(cfg.get("Renderer","Mode","system"))!="dxvk") return;
+    std::error_code ec; std::filesystem::path marker=g_pp.logs/"renderer.marker";
+    if(std::filesystem::exists(marker,ec)){ std::filesystem::remove(marker,ec); cfg.set("Renderer","Mode","system"); cfg.set("Renderer","LastRecovery",pg::nowStamp()); cfg.save(g_pp.config);
+        g_log.log(pg::LogLevel::Warn,"RECOVERY: the last start with DXVK did not stay running for 20 seconds. Switched back to the Windows Direct3D 9. You can try DXVK again in Game Options."); return; }
+    std::filesystem::path dll=g_pp.renderers/"dxvk"/"d3d9.dll"; pg::PeInfo pe=pg::inspectPe(dll,{true,false,false}); bool has=false; for(auto& e:pe.exports) if(e.name=="Direct3DCreate9") has=true;
+    if(!(pe.valid&&pe.isX86()&&pe.isDll&&has)){ g_log.log(pg::LogLevel::Warn,"DXVK is selected but its d3d9.dll is missing or not a valid 32-bit DLL (%s). Using the Windows Direct3D 9.",pg::pathToUtf8(dll).c_str()); return; }
+    std::filesystem::path conf=g_pp.renderers/"dxvk"/"dxvk.conf"; if(std::filesystem::exists(conf,ec)) SetEnvironmentVariableW(L"DXVK_CONFIG_FILE",conf.c_str());
+    SetEnvironmentVariableW(L"DXVK_LOG_PATH",g_pp.logs.c_str()); SetEnvironmentVariableW(L"DXVK_STATE_CACHE_PATH",(g_pp.renderers/"dxvk").c_str()); SetEnvironmentVariableW(L"DXVK_LOG_LEVEL",L"warn");
+    pg::writeFileAtomic(marker,"dxvk"); g_rendererMarker=marker; SetRealD3D9Override(dll.c_str());
+    HANDLE t=CreateThread(nullptr,0,RendererHealthThread,nullptr,0,nullptr); if(t) CloseHandle(t);
+}
 static void LoadAddons(){
     pg::IniFile cfg; cfg.load(g_pp.config);
     if(!cfg.getBool("Addons","LoadAddons",true)){ g_log.log(pg::LogLevel::Info,"Add-on loading is turned off in poneglyph.ini."); return; }
@@ -57,7 +73,7 @@ static void LoadAddons(){
         g_log.log(result=="Loaded"?pg::LogLevel::Info:pg::LogLevel::Error,"%s %s in %.2f ms %s",result=="Loaded"?"LOAD":"FAIL",e->rel.c_str(),ms,detail.c_str());
         recs.push_back({e->key,e->rel,result,detail,ms}); std::error_code ec; std::filesystem::remove(g_pp.logs/"loading.marker",ec);
     }
-    pg::writeLoadStatus(g_pp.status,recs,g_gameKey,PG_ENGINE_VERSION);
+    pg::writeLoadStatus(g_pp.status,recs,g_gameKey,PG_ENGINE_VERSION,UsingDxvk()?"dxvk":"system");
 }
 void InitializeOnce(){
     std::call_once(g_init,[]{
@@ -73,6 +89,7 @@ void InitializeOnce(){
         if(gid!=pg::GameId::Unknown){ auto info=pg::gameInfo(gid); if(!pg::iequals(pg::pathToUtf8(std::filesystem::path(exe).filename()),info->exeName)) g_log.log(pg::LogLevel::Warn,"unexpected exe name"); }
         else g_log.log(pg::LogLevel::Warn,"The host executable '%s' is not one of the three supported games. Forwarding still works; add-ons are loaded as configured.",exeName.c_str());
         g_enabled=cfg.getBool("General","Enabled",true); g_frameStats=cfg.getBool("Diagnostics","FrameStats",false); g_summarySecs=cfg.getInt("Diagnostics","SummarySeconds",10); if(g_summarySecs<2) g_summarySecs=2; if(g_summarySecs>300) g_summarySecs=300;
+        if(g_enabled) RendererSetup(cfg);
         if(!EnsureRealD3D9()){ g_log.log(pg::LogLevel::Error,"Genuine Direct3D 9 DLL unavailable. Add-ons will NOT be loaded (safe mode)."); return; }
         if(!g_enabled){ g_log.log(pg::LogLevel::Warn,"Poneglyph is disabled in poneglyph.ini (General/Enabled=0): pure pass-through."); return; }
         std::string msg; auto rec=pg::applyCrashRecovery(g_pp.logs/"loading.marker",g_pp.config,msg); if(!rec.empty()) g_log.log(pg::LogLevel::Warn,"RECOVERY: %s",msg.c_str());
@@ -81,5 +98,5 @@ void InitializeOnce(){
     });
 }
 void OnD3D9ObjectCreated(void* d3d,bool isEx){ if(FrameStatsEnabled()){ InstallD3DHooks(d3d,isEx); StartFrameSampler((g_pp.logs/"framestats.csv").c_str(),g_summarySecs); } }
-void OnShutdown(bool terminating){ if(g_frameStats) StopFrameSampler(!terminating); g_log.log(pg::LogLevel::Info,"==== Poneglyph Engine shutdown (%s) ====",terminating?"process exit":"unload"); g_log.close(); }
+void OnShutdown(bool terminating){ if(!g_rendererMarker.empty()){ std::error_code ec; std::filesystem::remove(g_rendererMarker,ec); } if(g_frameStats) StopFrameSampler(!terminating); g_log.log(pg::LogLevel::Info,"==== Poneglyph Engine shutdown (%s) ====",terminating?"process exit":"unload"); g_log.close(); }
 }

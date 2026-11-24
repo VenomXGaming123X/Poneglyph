@@ -120,8 +120,8 @@ std::vector<const AddonEntry*> loadList(const std::vector<AddonEntry>& all){
     std::vector<const AddonEntry*> r; for(auto& e:all) if(e.status==AddonStatus::Ready&&e.order>=0) r.push_back(&e);
     std::sort(r.begin(),r.end(),[](const AddonEntry*a,const AddonEntry*b){return a->order<b->order;}); return r;
 }
-bool writeLoadStatus(const fs::path& file,const std::vector<AddonLoadRecord>& recs,const std::string& game,const std::string& ver){
-    IniFile ini; ini.set("Engine","Version",ver); ini.set("Engine","Game",game); ini.set("Engine","Written",nowStamp()); ini.setInt("Engine","Count",(int)recs.size());
+bool writeLoadStatus(const fs::path& file,const std::vector<AddonLoadRecord>& recs,const std::string& game,const std::string& ver,const std::string& renderer){
+    IniFile ini; ini.set("Engine","Version",ver); if(!renderer.empty()) ini.set("Engine","Renderer",renderer); ini.set("Engine","Game",game); ini.set("Engine","Written",nowStamp()); ini.setInt("Engine","Count",(int)recs.size());
     for(size_t i=0;i<recs.size();i++){ auto s="Addon."+std::to_string(i); ini.set(s,"Key",recs[i].key); ini.set(s,"File",recs[i].file); ini.set(s,"Result",recs[i].result); ini.set(s,"Detail",recs[i].detail);
         char b[32]; std::snprintf(b,sizeof b,"%.3f",recs[i].ms); ini.set(s,"LoadMs",b); }
     return ini.save(file);

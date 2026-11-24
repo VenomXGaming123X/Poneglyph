@@ -60,7 +60,7 @@ enum { B_CHOOSE_EXE=200,B_SEARCH_DIR,B_INSTALL_ENGINE,B_REMOVE_ENGINE,B_LAUNCH,B
        T_ENABLED,T_LOADADDONS,T_FRAMESTATS,C_SUMMARY,C_LOGLEVEL,C_THEME,B_SAVE_SETTINGS,
        B_README,B_OPEN_LOGS,B_SUPPORT,
        H_VOICE,O_FULLSCREEN,O_VOICEJP,O_DECIDE,C_RES,C_MSAA,C_SHADOW,B_OPT_SAVE,ID_MEMCARD,
-       C_FONT,C_FSIZE,T_BOLD,T_WELCOME,ID_HERO,ID_HOMEVIEW };
+       C_FONT,C_FSIZE,T_BOLD,T_WELCOME,ID_HERO,ID_HOMEVIEW,C_RENDERER,ID_QUICKPLAY };
 #define WM_APP_DONE (WM_APP+1)
 struct Page { std::vector<HWND> buttons; HWND main=nullptr, second=nullptr, card=nullptr; };
 static HINSTANCE g_inst; static HWND g_hwnd, g_status, g_progress; static Page g_pages[PG_COUNT];
@@ -68,7 +68,7 @@ static int g_page=PG_HOME, g_theme=0, g_cur=0, g_dpi=96; static HFONT g_fBody,g_
 static int g_laaState=-1; static LaunchOptions g_opt; static std::vector<ControllerInfo> g_ctl;
 static const wchar_t* kFontNames[5]={L"Inter",L"Exo 2",L"Rajdhani",L"Chakra Petch",L"Nunito"};
 static const wchar_t* kSizeNames[4]={L"Small",L"Medium",L"Large",L"Extra large"}; static const int kSizeTenths[4]={90,100,110,130};
-static int g_fontIdx=0,g_sizeIdx=1,g_hover=0,g_capHover=0,g_homeScroll=0; static bool g_bold=false,g_welcome=true,g_helpOpen=false; static RECT g_helpRect{};
+static int g_fontIdx=0,g_sizeIdx=1,g_hover=0,g_capHover=0,g_homeScroll=0; static bool g_bold=false,g_welcome=true,g_helpOpen=false; static RECT g_helpRect{}; static int g_renderMode=0;
 static HBRUSH g_brBg,g_brSide,g_brEdit; static std::map<int,bool> g_toggle; static int g_summarySecs=10, g_logLevel=2;
 static Logger g_mlog, g_oplog; static std::mutex g_mx; static bool g_busy=false;
 struct Profile { GameId id; fs::path exe; };
@@ -159,6 +159,7 @@ static void ComputeHomeModel(){
     m.chips.push_back({"Mods (add-ons)",std::to_string(ready)+" ready, "+std::to_string(dis)+" off, "+std::to_string(bad)+" with a problem"});
     m.chips.push_back({"Controllers",g_ctl.empty()?"None found - plug yours in BEFORE you start the game":cl});
     m.chips.push_back({"Last game start",started?(st.get("Engine","Written")+(recs.empty()?" - ran fine, no mods to load":"")):"None yet"});
+    { std::string cm=toLower(cfg.get("Renderer","Mode","system"))=="dxvk"?"dxvk":"system", used=st.get("Engine","Renderer"); std::string txt=cm=="dxvk"?"DXVK (Vulkan)":"Windows Direct3D 9 (default)"; if(started&&!used.empty()&&used!=cm) txt+=" - last start used "+std::string(used=="dxvk"?"DXVK":"Windows")+" instead"; m.chips.push_back({"Graphics engine",txt}); }
     m.chips.push_back({"Safety copies",pathToUtf8(pp.backups)}); m.chips.push_back({"Log files",pathToUtf8(pp.logs)});
     if(!migNote.empty()) m.chips.push_back({"Folders",migNote}); if(g_mon.h) m.chips.push_back({"Game is running","Changes work after you restart the game"});
     g_home=m;
@@ -386,13 +387,14 @@ static int ResIndex(){ for(int i=0;i<6;i++) if(kRes[i].w==g_opt.width&&kRes[i].h
 static void RefreshOptionButtons(){
     auto set=[&](int id,const std::wstring& t){ for(int pg:{PG_OPTIONS,PG_HOME}) for(HWND h:g_pages[pg].buttons) if(GetDlgCtrlID(h)==id){ SetWindowTextW(h,t.c_str()); InvalidateRect(h,nullptr,TRUE); } };
     int ri=ResIndex(); std::wstring rl=ri>=0?std::wstring(kRes[ri].label):std::to_wstring(g_opt.width)+L" x "+std::to_wstring(g_opt.height);
+    set(C_RENDERER,g_renderMode==1?L"Graphics engine: DXVK (Vulkan)":L"Graphics engine: Windows (default)");
     set(C_RES,L"Resolution: "+rl); set(C_MSAA,g_opt.msaa?L"Anti-aliasing: "+std::to_wstring(g_opt.msaa)+L"x":std::wstring(L"Anti-aliasing: Off")); set(C_SHADOW,g_opt.shadow?L"Shadow quality: "+std::to_wstring(g_opt.shadow):std::wstring(L"Shadow quality: Game default"));
     bool sup=launchOptionsSupported(g_prof[g_cur].id); set(H_VOICE,!sup?L"Voice: set inside the game":(g_opt.voiceJP?L"Voice: Japanese":L"Voice: English"));
-    for(int pg:{PG_OPTIONS,PG_HOME}) for(HWND hb:g_pages[pg].buttons){ int bid=GetDlgCtrlID(hb); if(pg==PG_OPTIONS||bid==H_VOICE) EnableWindow(hb,sup?TRUE:FALSE); }
+    for(int pg:{PG_OPTIONS,PG_HOME}) for(HWND hb:g_pages[pg].buttons){ int bid=GetDlgCtrlID(hb); if((pg==PG_OPTIONS&&bid!=C_RENDERER&&bid!=B_OPT_SAVE)||bid==H_VOICE) EnableWindow(hb,sup?TRUE:FALSE); }
     g_toggle[O_FULLSCREEN]=g_opt.fullscreen; g_toggle[O_VOICEJP]=g_opt.voiceJP; g_toggle[O_DECIDE]=g_opt.decideReverse;
     for(HWND h:g_pages[PG_OPTIONS].buttons) InvalidateRect(h,nullptr,TRUE);
 }
-static void LoadOptionsFromProfile(){ g_opt=LaunchOptions(); if(haveExe()){ IniFile c; c.load(curPaths().config); g_opt=loadLaunchOptions(c); } RefreshOptionButtons(); }
+static void LoadOptionsFromProfile(){ g_opt=LaunchOptions(); g_renderMode=0; if(haveExe()){ IniFile c; c.load(curPaths().config); g_opt=loadLaunchOptions(c); g_renderMode=(toLower(c.get("Renderer","Mode","system"))=="dxvk")?1:0; } RefreshOptionButtons(); }
 static bool SaveOptions(bool quiet){
     if(!haveExe()){ Msg("Please do Step 1 first","Press 'Find My Game' on the Home page first."); return false; }
     auto bad=validateLaunchOptions(g_opt); if(!bad.empty()){ Msg("These options cannot be saved",join(bad,"\n"),MB_ICONWARNING); return false; }
@@ -404,7 +406,39 @@ static void ShowOptionsText(){
     std::string t;
     if(!launchOptionsSupported(g_prof[g_cur].id)) t="GAME OPTIONS\n\nLightning Returns does not read these launch options, so Poneglyph does not offer them for this game. Nothing is guessed: when a safe, tested way exists for this game, it will appear on this page.\n";
     else t="GAME OPTIONS\n\nThese are the same start-up options the game's own launcher uses. Poneglyph does not change any game file or add anything to the game. It simply starts the game with the choices you make here.\n\nHOW TO USE\n  1. Pick your choices with the buttons above.\n  2. Press 'Save Game Options'.\n  3. Start the game with 'Play the Game' on the Home page.\n\nIMPORTANT\n  These options apply only when the game is started from Poneglyph. If you start it from Steam, Steam's own launcher decides.\n\nWHAT EACH ONE DOES\n  Resolution - the size of the picture. 'Game default' lets the game decide.\n  Full screen - OFF means the game runs in a window.\n  Anti-aliasing - smoother edges (2x to 16x). Higher looks nicer but needs a stronger graphics card.\n  Shadow quality - sharper shadows at higher numbers (uses more video memory).\n  Japanese voice - uses the Japanese voice-over. It works only if your copy contains Japanese audio. Some editions have only Japanese, some have both. Choosing a language in Steam's Properties does not change the voice - this option does.\n  Swap Confirm / Cancel - exchanges the two buttons.\n\nNOT GUESSED\n  The presets are the safe choices. Other sizes are accepted by the game's start-up options but have not been tested by us. If the picture looks wrong, set Resolution back to 'Game default'.\n";
+    t+="\nGRAPHICS ENGINE (all three games)\n  Windows (default) - the game uses Windows' own Direct3D 9, as always.\n  DXVK (Vulkan) - Poneglyph starts the game through DXVK instead. It needs Poneglyph installed and a Vulkan-capable graphics card, and it can be switched back here at any time. If the game cannot stay running for 20 seconds with DXVK, Poneglyph switches back by itself.\n";
     PutText(g_pages[PG_OPTIONS].main,t);
+}
+// ------------------------------------------------------------------ graphics engine (DXVK) - chained by the Poneglyph engine, never copied over d3d9.dll
+static bool HasEmbeddedDxvk(){ return FindResourceW(nullptr,MAKEINTRESOURCEW(301),RT_RCDATA)!=nullptr; }
+static bool ExtractDxvk(const fs::path& dest,std::string& err){
+    HRSRC r=FindResourceW(nullptr,MAKEINTRESOURCEW(301),RT_RCDATA); if(!r){ err="DXVK is not part of this build."; return false; }
+    HGLOBAL g=LoadResource(nullptr,r); void* d=g?LockResource(g):nullptr; DWORD sz=SizeofResource(nullptr,r); if(!d||!sz){ err="The built-in DXVK file could not be read."; return false; }
+    std::error_code ec; fs::create_directories(dest.parent_path(),ec); fs::path tmp=dest; tmp+=".pgtmp";
+    { std::ofstream o(tmp,std::ios::binary|std::ios::trunc); o.write((const char*)d,(std::streamsize)sz); o.flush(); if(!o){ err="Could not write the DXVK file."; fs::remove(tmp,ec); return false; } }
+    std::string h1=Sha256::ofBuffer(d,sz),h2; if(!Sha256::ofFile(tmp,h2)||h1!=h2){ err="The copied DXVK file failed its SHA-256 check."; fs::remove(tmp,ec); return false; }
+    auto pe=inspectPe(tmp,{true,false,false}); bool has=false; for(auto& e:pe.exports) if(e.name=="Direct3DCreate9") has=true;
+    if(!(pe.valid&&pe.isX86()&&pe.isDll&&has)){ err="The DXVK file is not a valid 32-bit d3d9.dll."; fs::remove(tmp,ec); return false; }
+    fs::remove(dest,ec); fs::rename(tmp,dest,ec); if(ec){ err="Could not place the DXVK file: "+ec.message(); fs::remove(tmp,ec); return false; }
+    g_mlog.log(LogLevel::Info,"DXVK extracted to %s (sha256 %s)",pathToUtf8(dest).c_str(),h1.c_str()); return true;
+}
+static std::string VulkanStatus(){
+    HMODULE v=LoadLibraryW(L"vulkan-1.dll"); if(!v) return "No Vulkan runtime was found. DXVK cannot work until your graphics driver provides Vulkan.";
+    typedef int(__stdcall* PFN)(unsigned*); auto f=(PFN)GetProcAddress(v,"vkEnumerateInstanceVersion"); unsigned ver=(1u<<22); if(f) f(&ver); FreeLibrary(v);
+    unsigned maj=ver>>22, mn=(ver>>12)&0x3FF; std::string t="Vulkan runtime found (version "+std::to_string(maj)+"."+std::to_string(mn)+"). ";
+    return t+((maj>1||mn>=3)?"DXVK 2.x also needs your graphics card itself to support Vulkan 1.3; this check can only see the runtime.":"This is older than 1.3, so DXVK 2.x may not work on this PC.");
+}
+static void ApplyRenderer(int mode){
+    if(!haveExe()){ Msg("Please do Step 1 first","Press 'Find My Game' on the Home page first."); return; }
+    auto pp=curPaths(); std::error_code ec; fs::create_directories(pp.root,ec); IniFile c; c.load(pp.config);
+    if(mode==0){ c.set("Renderer","Mode","system"); if(!c.save(pp.config)){ Msg("Could not save","The settings file could not be written.",MB_ICONWARNING); return; } g_renderMode=0; RefreshOptionButtons(); SetStatus("Graphics engine: Windows Direct3D 9 (default). It applies the next time the game starts."); return; }
+    if(classifyD3D9(pp.gameDir/"d3d9.dll")!=ProxyKind::Poneglyph){ Msg("Install Poneglyph first","DXVK is started by the Poneglyph engine, so Poneglyph must be installed for this game first.\n\nPress 'Install Poneglyph' on the Home page, then choose DXVK again."); return; }
+    if(!HasEmbeddedDxvk()){ Msg("DXVK is not in this download","This copy of Poneglyph was built without the DXVK file (its download failed while the program was being made), so DXVK cannot be offered. Nothing was changed."); return; }
+    if(!Ask("Use DXVK (Vulkan) for this game?","WHAT IT IS\nDXVK translates the game's old Direct3D 9 graphics into Vulkan, a newer way of talking to your graphics card.\n\nWHY YOU MAY WANT IT\nOn many PCs it smooths out stutter and driver problems. It does not help on every PC, and some graphics cards or drivers do not support it.\n\nYOUR PC\n"+VulkanStatus()+"\n\nIF YOU PRESS YES\nPoneglyph copies ONE file into the game's .Poneglyph\\Renderers folder (checked by SHA-256). No game file is changed. If the game cannot stay running for 20 seconds with DXVK, Poneglyph switches back to Windows by itself.\n\nHOW TO UNDO\nChoose \"Windows (default)\" here at any time.\n\nUse DXVK?")) return;
+    std::string err; if(!ExtractDxvk(pp.renderers/"dxvk"/"d3d9.dll",err)){ Msg("DXVK was not set up",err+"\n\nNothing was changed.",MB_ICONWARNING); return; }
+    fs::path conf=pp.renderers/"dxvk"/"dxvk.conf"; if(!fs::exists(conf,ec)) writeFileAtomic(conf,"# DXVK settings for this game. Poneglyph does not guess any tuning values; add your own lines below if you know them.\n# See https://github.com/doitsujin/dxvk for the list of options.\n");
+    c.set("Renderer","Mode","dxvk"); c.remove("Renderer","LastRecovery"); if(!c.save(pp.config)){ Msg("Could not save","The settings file could not be written.",MB_ICONWARNING); return; }
+    g_renderMode=1; RefreshOptionButtons(); RefreshHome(); Msg("DXVK is ready","DXVK will be used the next time the game starts. To check it, look at 'Graphics engine' on the Home page after the game has run.");
 }
 // ------------------------------------------------------------------ chrome drawing
 static int TB(){ return S(38); }
@@ -508,15 +542,16 @@ static LRESULT CALLBACK HomeViewProc(HWND h,UINT m,WPARAM w,LPARAM l){
     }
     return DefWindowProcW(h,m,w,l);
 }
-// ---- dropdown popup (glass look: 70% opaque = 30% see-through)
+// ---- dropdown popup (100% solid background, full-contrast text)
+static bool FontExists(const wchar_t* face);
 struct DDState { std::vector<std::wstring> items; int sel=-1, hot=-1, id=0; };
 static DDState g_dd; static HWND g_ddWnd=nullptr; enum { WM_APP_DD=WM_APP+2 };
 static LRESULT CALLBACK DDProc(HWND h,UINT m,WPARAM w,LPARAM l){
     int ih=S(32), pd=S(5);
     switch(m){
-    case WM_PAINT: { PAINTSTRUCT ps; HDC dc=BeginPaint(h,&ps); RECT rc; GetClientRect(h,&rc); Fill(dc,rc,Mix(T().panelHi,T().bg,0.25)); SetBkMode(dc,TRANSPARENT);
-        for(int i=0;i<(int)g_dd.items.size();i++){ RECT ir={pd,pd+i*ih,rc.right-pd,pd+(i+1)*ih}; bool hot=i==g_dd.hot, sel=i==g_dd.sel; if(hot) RoundPanel(dc,ir,Mix(T().panelHi,T().accent,0.38),Mix(T().panelHi,T().accent,0.30),Mix(T().panelHi,T().accent,0.38),S(8));
-            SelectObject(dc,sel?g_fBold:g_fBody); SetTextColor(dc,(hot||sel)?T().accent:T().text); RECT tr=ir; tr.left+=S(12); DrawTextW(dc,g_dd.items[i].c_str(),-1,&tr,DT_LEFT|DT_VCENTER|DT_SINGLELINE); }
+    case WM_PAINT: { PAINTSTRUCT ps; HDC dc=BeginPaint(h,&ps); RECT rc; GetClientRect(h,&rc); Fill(dc,rc,Mix(T().panelLo,T().bg,0.35)); SetBkMode(dc,TRANSPARENT);
+        for(int i=0;i<(int)g_dd.items.size();i++){ RECT ir={pd,pd+i*ih,rc.right-pd,pd+(i+1)*ih}; bool hot=i==g_dd.hot, sel=i==g_dd.sel; if(hot) RoundPanel(dc,ir,T().accent,T().accent,T().accent,S(8));
+            SelectObject(dc,sel?g_fBold:g_fBody); SetTextColor(dc,hot?T().accentText:(sel?T().header:T().text)); RECT tr=ir; tr.left+=S(12); DrawTextW(dc,g_dd.items[i].c_str(),-1,&tr,DT_LEFT|DT_VCENTER|DT_SINGLELINE); }
         HBRUSH fb=CreateSolidBrush(T().frame); FrameRect(dc,&rc,fb); DeleteObject(fb); EndPaint(h,&ps); return 0; }
     case WM_MOUSEMOVE: { int i=(GET_Y_LPARAM(l)-pd)/ih; if(GET_Y_LPARAM(l)<pd||i<0||i>=(int)g_dd.items.size()) i=-1; if(i!=g_dd.hot){ g_dd.hot=i; InvalidateRect(h,nullptr,FALSE); } return 0; }
     case WM_LBUTTONDOWN: case WM_LBUTTONUP: { POINT pt={GET_X_LPARAM(l),GET_Y_LPARAM(l)}; RECT rc; GetClientRect(h,&rc);
@@ -538,13 +573,14 @@ static void OpenDropdown(int id){
     case C_SUMMARY: d.items={L"Every 5 seconds",L"Every 10 seconds",L"Every 30 seconds",L"Every 60 seconds"}; for(int k=0;k<4;k++) if(kSummary[k]==g_summarySecs) d.sel=k; break;
     case C_LOGLEVEL: for(int k=0;k<4;k++) d.items.push_back(W(kLogNames[k])); d.sel=g_logLevel; break;
     case C_THEME: for(int k=0;k<kThemeCount;k++) d.items.push_back(kThemes[k].name); d.sel=g_theme; break;
-    case C_FONT: for(int k=0;k<5;k++) d.items.push_back(kFontNames[k]); d.sel=g_fontIdx; break;
+    case C_FONT: for(int k=0;k<5;k++) d.items.push_back(std::wstring(kFontNames[k])+(FontExists(kFontNames[k])?L"":L"   (not installed)")); d.sel=g_fontIdx; break;
+    case C_RENDERER: d.items={L"Windows Direct3D 9 (default)",L"DXVK (Vulkan)"}; d.sel=g_renderMode; break;
     case C_FSIZE: for(int k=0;k<4;k++) d.items.push_back(kSizeNames[k]); d.sel=g_sizeIdx; break;
     default: return; }
     HWND btn=GetDlgItem(g_hwnd,id); if(!btn) return; g_dd=d; RECT br; GetWindowRect(btn,&br); int w=std::max((int)(br.right-br.left),S(220)), hgt=(int)d.items.size()*S(32)+S(10), x=br.left, y=br.bottom+S(4);
     MONITORINFO mi{sizeof mi}; GetMonitorInfoW(MonitorFromWindow(btn,MONITOR_DEFAULTTONEAREST),&mi); if(y+hgt>mi.rcWork.bottom) y=br.top-hgt-S(4); if(x+w>mi.rcWork.right) x=mi.rcWork.right-w;
-    g_ddWnd=CreateWindowExW(WS_EX_TOOLWINDOW|WS_EX_TOPMOST|WS_EX_LAYERED,L"PGDropdown",L"",WS_POPUP,x,y,w,hgt,g_hwnd,nullptr,g_inst,nullptr); if(!g_ddWnd) return;
-    SetLayeredWindowAttributes(g_ddWnd,0,(BYTE)(255*70/100),LWA_ALPHA); ShowWindow(g_ddWnd,SW_SHOWNOACTIVATE); SetCapture(g_ddWnd);
+    g_ddWnd=CreateWindowExW(WS_EX_TOOLWINDOW|WS_EX_TOPMOST,L"PGDropdown",L"",WS_POPUP,x,y,w,hgt,g_hwnd,nullptr,g_inst,nullptr); if(!g_ddWnd) return;
+    ShowWindow(g_ddWnd,SW_SHOWNOACTIVATE); SetCapture(g_ddWnd);
 }
 static void ApplyFonts(); static void ApplyTheme(); static void ShowPage(int p);
 static void OnDropdownPick(int id,int i){
@@ -556,6 +592,7 @@ static void OnDropdownPick(int id,int i){
     case C_LOGLEVEL: if(i>=0&&i<4) g_logLevel=i; RefreshSettingButtons(); break;
     case C_THEME: if(i>=0&&i<kThemeCount){ g_theme=i; SaveManagerSettings(); ApplyTheme(); } break;
     case C_FONT: if(i>=0&&i<5){ g_fontIdx=i; SaveManagerSettings(); ApplyFonts(); RefreshSettingButtons(); ShowPage(g_page); RedrawWindow(g_hwnd,nullptr,nullptr,RDW_INVALIDATE|RDW_ERASE|RDW_ALLCHILDREN); } break;
+    case C_RENDERER: if(i>=0&&i<2) ApplyRenderer(i); break;
     case C_FSIZE: if(i>=0&&i<4){ g_sizeIdx=i; SaveManagerSettings(); ApplyFonts(); RefreshSettingButtons(); ShowPage(g_page); RedrawWindow(g_hwnd,nullptr,nullptr,RDW_INVALIDATE|RDW_ERASE|RDW_ALLCHILDREN); } break;
     }
 }
@@ -621,16 +658,21 @@ static void PaintCaption(HDC dc,const RECT& rc){
 }
 // ---- hover tracking for every custom button (nav items, tabs, buttons): the text lights up in the theme colour
 static LRESULT CALLBACK BtnProc(HWND h,UINT m,WPARAM w,LPARAM l,UINT_PTR,DWORD_PTR){
-    if(m==WM_MOUSEMOVE){ int id=GetDlgCtrlID(h); if(g_hover!=id){ int old=g_hover; g_hover=id; TRACKMOUSEEVENT t{sizeof t,TME_LEAVE,h,0}; TrackMouseEvent(&t); InvalidateRect(h,nullptr,FALSE); if(old){ if(HWND oh=GetDlgItem(g_hwnd,old)) InvalidateRect(oh,nullptr,FALSE); } } }
-    else if(m==WM_MOUSELEAVE){ int id=GetDlgCtrlID(h); if(g_hover==id) g_hover=0; InvalidateRect(h,nullptr,FALSE); }
+    if(m==WM_MOUSEMOVE){ int id=GetDlgCtrlID(h); if(g_hover!=id){ int old=g_hover; g_hover=id; TRACKMOUSEEVENT t{sizeof t,TME_LEAVE,h,0}; TrackMouseEvent(&t); InvalidateRect(h,nullptr,FALSE); { RECT cr; GetClientRect(g_hwnd,&cr); RECT ib={S(10),cr.bottom-S(134),S(206),cr.bottom-S(10)}; InvalidateRect(g_hwnd,&ib,FALSE); } if(old){ if(HWND oh=GetDlgItem(g_hwnd,old)) InvalidateRect(oh,nullptr,FALSE); } } }
+    else if(m==WM_MOUSELEAVE){ int id=GetDlgCtrlID(h); if(g_hover==id) g_hover=0; InvalidateRect(h,nullptr,FALSE); { RECT cr; GetClientRect(g_hwnd,&cr); RECT ib={S(10),cr.bottom-S(134),S(206),cr.bottom-S(10)}; InvalidateRect(g_hwnd,&ib,FALSE); } }
     else if(m==WM_NCDESTROY) RemoveWindowSubclass(h,BtnProc,2);
     return DefSubclassProc(h,m,w,l);
 }
 static void DrawOwner(DRAWITEMSTRUCT* d){
     int id=(int)d->CtlID; HDC dc=d->hDC; RECT r=d->rcItem; if(id==ID_MEMCARD){ DrawMemCard(d); return; } if(id==ID_HERO){ DrawHero(d); return; }
+    if(id==ID_QUICKPLAY){ bool pr=(d->itemState&ODS_SELECTED)!=0, ho=(g_hover==id); Fill(dc,r,T().sidebar); COLORREF a=Mix(T().accent,RGB(255,255,255),ho?0.20:0.08), b=Mix(T().accent,RGB(0,0,0),pr?0.30:0.12);
+        RoundPanel(dc,r,a,b,Mix(T().accent,RGB(255,255,255),0.40),S(14)); SetBkMode(dc,TRANSPARENT); int cx=r.left+S(34), cy=(r.top+r.bottom)/2, t=S(9); POINT tri[3]={{cx-t/2,cy-t},{cx-t/2,cy+t},{cx+t,cy}};
+        HBRUSH tbr=CreateSolidBrush(T().accentText); HPEN tp=CreatePen(PS_NULL,0,0); HGDIOBJ ob=SelectObject(dc,tbr),op=SelectObject(dc,tp); Polygon(dc,tri,3); SelectObject(dc,ob); SelectObject(dc,op); DeleteObject(tbr); DeleteObject(tp);
+        RECT tr=r; tr.left+=S(58); SelectObject(dc,g_fTitle); SetTextColor(dc,T().accentText); DrawTextW(dc,L"Play",-1,&tr,DT_LEFT|DT_VCENTER|DT_SINGLELINE); return; }
+
     bool pressed=(d->itemState&ODS_SELECTED)!=0, dis=(d->itemState&ODS_DISABLED)!=0, hot=(id==g_hover); wchar_t txt[160]; GetWindowTextW(d->hwndItem,txt,160);
     bool nav=id>=ID_NAV&&id<ID_NAV+PG_COUNT, tab=id>=ID_PROFILE&&id<ID_PROFILE+3, tog=g_toggle.count(id)>0;
-    bool isDD=(id==C_RES||id==C_MSAA||id==C_SHADOW||id==C_SUMMARY||id==C_LOGLEVEL||id==C_THEME||id==C_FONT||id==C_FSIZE); SetBkMode(dc,TRANSPARENT);
+    bool isDD=(id==C_RENDERER||id==C_RES||id==C_MSAA||id==C_SHADOW||id==C_SUMMARY||id==C_LOGLEVEL||id==C_THEME||id==C_FONT||id==C_FSIZE); SetBkMode(dc,TRANSPARENT);
     if(tog){ Fill(dc,r,T().bg); RECT bx={r.left+S(4),r.top+(r.bottom-r.top-S(22))/2,r.left+S(42),0}; bx.bottom=bx.top+S(22); bool on=g_toggle[id];
         HBRUSH bg=CreateSolidBrush(on?T().accent:T().sidebar); HPEN pen=CreatePen(PS_SOLID,1,on?T().accent:(hot?T().accent:T().border)); HGDIOBJ op=SelectObject(dc,pen),ob=SelectObject(dc,bg); RoundRect(dc,bx.left,bx.top,bx.right,bx.bottom,S(22),S(22)); SelectObject(dc,op); SelectObject(dc,ob); DeleteObject(pen); DeleteObject(bg);
         int kn=S(16), kx=on?bx.right-kn-S(3):bx.left+S(3); HBRUSH kb=CreateSolidBrush(on?T().accentText:T().dim); HPEN kp=CreatePen(PS_NULL,0,0); op=SelectObject(dc,kp); ob=SelectObject(dc,kb); Ellipse(dc,kx,bx.top+S(3),kx+kn,bx.top+S(3)+kn); SelectObject(dc,op); SelectObject(dc,ob); DeleteObject(kb); DeleteObject(kp);
@@ -675,6 +717,7 @@ static void LoadBundledFonts(){   // Google Fonts embedded in Poneglyph.exe (SIL
     std::error_code ec; fs::path d=exeDir()/"Fonts"; if(!fs::is_directory(d,ec)) return;
     for(auto& e:fs::directory_iterator(d,ec)){ auto ext=toLower(pathToUtf8(e.path().extension())); if(ext==".ttf"||ext==".otf") AddFontResourceExW(e.path().c_str(),FR_PRIVATE,nullptr); }
 }
+static void LogFontStatus(){ std::string t; for(int k=0;k<5;k++) t+=U(kFontNames[k])+(FontExists(kFontNames[k])?"=available ":"=NOT AVAILABLE "); g_mlog.log(LogLevel::Info,"fonts: %s",t.c_str()); }
 static void ApplyFonts(){
     if(g_fBody){ DeleteObject(g_fBody); DeleteObject(g_fBold); DeleteObject(g_fTitle); DeleteObject(g_fSmall); DeleteObject(g_fText); DeleteObject(g_fMono); DeleteObject(g_fHead); }
     if(FontExists(kFontNames[g_fontIdx])){ lstrcpyW(g_faceBody,kFontNames[g_fontIdx]); } else PickFace(g_faceBody,{L"Segoe UI Variable Text",L"Segoe UI"},L"Tahoma");
@@ -703,7 +746,8 @@ static void ShowPage(int p){
 }
 static void Layout(){
     if(!g_hwnd) return; RECT rc; GetClientRect(g_hwnd,&rc); int tb=TB(), sw=S(216), sh=S(30), pad=S(18), tabBar=S(62);
-    int y=tb+S(80); for(int i=0;i<PG_COUNT;i++){ SetWindowPos(GetDlgItem(g_hwnd,ID_NAV+i),nullptr,S(10),y,sw-S(20),S(40),SWP_NOZORDER); y+=S(44); }
+    SetWindowPos(GetDlgItem(g_hwnd,ID_QUICKPLAY),nullptr,S(10),tb+S(76),sw-S(20),S(46),SWP_NOZORDER);
+    int y=tb+S(132); for(int i=0;i<PG_COUNT;i++){ SetWindowPos(GetDlgItem(g_hwnd,ID_NAV+i),nullptr,S(10),y,sw-S(20),S(40),SWP_NOZORDER); y+=S(44); }
     int tabsX=sw+pad, gapT=S(10), tabW=(rc.right-tabsX-pad-2*gapT)/3, tabH=S(40); for(int i=0;i<3;i++) SetWindowPos(GetDlgItem(g_hwnd,ID_PROFILE+i),nullptr,tabsX+i*(tabW+gapT),tb+(tabBar-tabH)/2,tabW,tabH,SWP_NOZORDER);
     SetWindowPos(g_status,nullptr,sw+pad,rc.bottom-sh,rc.right-sw-pad-S(190),sh,SWP_NOZORDER); SetWindowPos(g_progress,nullptr,rc.right-S(180),rc.bottom-sh+S(8),S(164),S(14),SWP_NOZORDER);
     RECT c={sw+pad,tb+tabBar+pad,rc.right-pad,rc.bottom-sh-S(6)}; int gap=S(10), bh=S(40);
@@ -719,6 +763,7 @@ static void Layout(){
 static void BuildUi(){
     g_status=CreateWindowExW(0,L"STATIC",L"Ready",WS_CHILD|WS_VISIBLE|SS_LEFTNOWORDWRAP|SS_CENTERIMAGE,0,0,10,10,g_hwnd,(HMENU)9001,g_inst,nullptr);
     g_progress=CreateWindowExW(0,PROGRESS_CLASSW,L"",WS_CHILD|PBS_MARQUEE,0,0,10,10,g_hwnd,(HMENU)9002,g_inst,nullptr); SetWindowTheme(g_progress,L"",L"");
+    { HWND q=CreateWindowExW(0,L"BUTTON",L"Play",WS_CHILD|WS_VISIBLE|WS_TABSTOP|BS_OWNERDRAW,0,0,10,10,g_hwnd,(HMENU)(INT_PTR)ID_QUICKPLAY,g_inst,nullptr); SetWindowSubclass(q,BtnProc,2,0); }
     for(int i=0;i<PG_COUNT;i++){ HWND n=CreateWindowExW(0,L"BUTTON",kPageNames[i],WS_CHILD|WS_VISIBLE|WS_TABSTOP|BS_OWNERDRAW,0,0,10,10,g_hwnd,(HMENU)(INT_PTR)(ID_NAV+i),g_inst,nullptr); SetWindowSubclass(n,BtnProc,2,0); }
     for(int i=0;i<3;i++){ HWND t=CreateWindowExW(0,L"BUTTON",W(gameInfo(g_prof[i].id)->displayName).c_str(),WS_CHILD|WS_VISIBLE|WS_TABSTOP|BS_OWNERDRAW,0,0,10,10,g_hwnd,(HMENU)(INT_PTR)(ID_PROFILE+i),g_inst,nullptr); SetWindowSubclass(t,BtnProc,2,0); }
     MakeBtn(PG_HOME,B_CHOOSE_EXE,L"Find My Game"); MakeBtn(PG_HOME,B_LAUNCH,L"Play the Game"); MakeBtn(PG_HOME,B_INSTALL_ENGINE,L"Install Poneglyph");
@@ -728,7 +773,7 @@ static void BuildUi(){
     g_pages[PG_ADDONS].main=MakeList(g_hwnd,ID_LIST_ADDONS,{{L"Add-on",S(230)},{L"Status",S(150)},{L"Order",S(60)},{L"Architecture",S(110)},{L"Size",S(80)},{L"Compatibility",S(260)},{L"Details",S(420)}}); g_pages[PG_ADDONS].second=MakeRich(ID_EDIT+1);
     MakeBtn(PG_PERF,B_MON_START,L"Start Monitoring"); MakeBtn(PG_PERF,B_MON_STOP,L"Stop Monitoring"); MakeBtn(PG_PERF,B_LAUNCH_MON,L"Launch + Monitor"); MakeBtn(PG_PERF,B_EXPORT_CSV,L"Export CSV"); MakeBtn(PG_PERF,B_REPORT,L"View Report"); MakeBtn(PG_PERF,B_SAVE_REPORT,L"Save Report"); MakeBtn(PG_PERF,B_COMPARE,L"Compare Frame Data..."); g_pages[PG_PERF].main=MakeRich(ID_EDIT+2);
     MakeBtn(PG_MEM,B_LAA_CHECK,L"Check Status"); MakeBtn(PG_MEM,B_LAA_ENABLE,L"Enable 4 GB Flag"); MakeBtn(PG_MEM,B_LAA_RESTORE,L"Restore Original"); g_pages[PG_MEM].card=CreateWindowExW(0,L"STATIC",L"",WS_CHILD|SS_OWNERDRAW,0,0,10,10,g_hwnd,(HMENU)(INT_PTR)ID_MEMCARD,g_inst,nullptr); g_pages[PG_MEM].main=MakeRich(ID_EDIT+3);
-    MakeBtn(PG_OPTIONS,C_RES,L"Resolution: Game default"); MakeBtn(PG_OPTIONS,C_MSAA,L"Anti-aliasing: Off"); MakeBtn(PG_OPTIONS,C_SHADOW,L"Shadow quality: Game default"); MakeBtn(PG_OPTIONS,O_FULLSCREEN,L"Full screen"); MakeBtn(PG_OPTIONS,O_VOICEJP,L"Japanese voice"); MakeBtn(PG_OPTIONS,O_DECIDE,L"Swap Confirm / Cancel"); MakeBtn(PG_OPTIONS,B_OPT_SAVE,L"Save Game Options"); g_pages[PG_OPTIONS].main=MakeRich(ID_EDIT+7);
+    MakeBtn(PG_OPTIONS,C_RES,L"Resolution: Game default"); MakeBtn(PG_OPTIONS,C_MSAA,L"Anti-aliasing: Off"); MakeBtn(PG_OPTIONS,C_SHADOW,L"Shadow quality: Game default"); MakeBtn(PG_OPTIONS,O_FULLSCREEN,L"Full screen"); MakeBtn(PG_OPTIONS,O_VOICEJP,L"Japanese voice"); MakeBtn(PG_OPTIONS,O_DECIDE,L"Swap Confirm / Cancel"); MakeBtn(PG_OPTIONS,C_RENDERER,L"Graphics engine: Windows (default)"); MakeBtn(PG_OPTIONS,B_OPT_SAVE,L"Save Game Options"); g_pages[PG_OPTIONS].main=MakeRich(ID_EDIT+7);
     MakeBtn(PG_BACKUPS,B_BK_RESTORE,L"Restore Selected"); MakeBtn(PG_BACKUPS,B_BK_OPEN,L"Open Backups Folder"); g_pages[PG_BACKUPS].main=MakeList(g_hwnd,ID_LIST_BACKUPS,{{L"Backup file",S(520)},{L"Size",S(110)},{L"Type",S(220)}}); g_pages[PG_BACKUPS].second=MakeRich(ID_EDIT+4);
     MakeBtn(PG_SETTINGS,T_ENABLED,L"Poneglyph engine ON"); MakeBtn(PG_SETTINGS,T_LOADADDONS,L"Load add-ons"); MakeBtn(PG_SETTINGS,T_FRAMESTATS,L"Frame statistics (light)"); MakeBtn(PG_SETTINGS,T_BOLD,L"Bold text"); MakeBtn(PG_SETTINGS,T_WELCOME,L"Show welcome note");
     MakeBtn(PG_SETTINGS,C_THEME,L"Theme"); MakeBtn(PG_SETTINGS,C_FONT,L"Font"); MakeBtn(PG_SETTINGS,C_FSIZE,L"Text size"); MakeBtn(PG_SETTINGS,C_SUMMARY,L"Summary every 10 s"); MakeBtn(PG_SETTINGS,C_LOGLEVEL,L"Log detail: Normal"); MakeBtn(PG_SETTINGS,B_SAVE_SETTINGS,L"Save Settings"); g_pages[PG_SETTINGS].main=MakeRich(ID_EDIT+5);
@@ -742,12 +787,13 @@ static void SwitchProfile(int i){ g_cur=i; g_scan.clear(); g_samples.clear(); g_
 static void OnCommand(int id){
     if(id>=ID_NAV&&id<ID_NAV+PG_COUNT){ ShowPage(id-ID_NAV); return; } if(id>=ID_PROFILE&&id<ID_PROFILE+3){ SwitchProfile(id-ID_PROFILE); return; }
     switch(id){
+    case ID_QUICKPLAY: LaunchGame(); break;
     case B_CHOOSE_EXE: ChooseExe(); break; case B_SEARCH_DIR: SearchFolder(); break; case B_INSTALL_ENGINE: InstallEngine(); break; case B_REMOVE_ENGINE: RemoveEngine(); break;
     case B_LAUNCH: LaunchGame(); break; case B_OPEN_GAME: if(haveExe()) OpenFolder(g_prof[g_cur].exe.parent_path()); break;
     case H_VOICE: if(!launchOptionsSupported(g_prof[g_cur].id)) break;
                   g_opt.voiceJP=!g_opt.voiceJP; if(SaveOptions(true)) SetStatus(g_opt.voiceJP?"Voice set to Japanese. It applies the next time you press 'Play the Game'. (Needs Japanese audio in your copy.)":"Voice set to English. It applies the next time you press 'Play the Game'."); RefreshOptionButtons(); break;
     case O_FULLSCREEN: g_opt.fullscreen=!g_opt.fullscreen; RefreshOptionButtons(); break; case O_VOICEJP: g_opt.voiceJP=!g_opt.voiceJP; RefreshOptionButtons(); break; case O_DECIDE: g_opt.decideReverse=!g_opt.decideReverse; RefreshOptionButtons(); break;
-    case C_RES: case C_MSAA: case C_SHADOW: case C_SUMMARY: case C_LOGLEVEL: case C_THEME: case C_FONT: case C_FSIZE: OpenDropdown(id); break;
+    case C_RENDERER: case C_RES: case C_MSAA: case C_SHADOW: case C_SUMMARY: case C_LOGLEVEL: case C_THEME: case C_FONT: case C_FSIZE: OpenDropdown(id); break;
     case B_OPT_SAVE: if(!launchOptionsSupported(g_prof[g_cur].id)){ Msg("Not available for this game","Lightning Returns does not read these start-up options."); break; } SaveOptions(false); break;
     case B_SCAN: DoScan(); break; case B_ENABLE: SetEnabledSel(true); break; case B_DISABLE: SetEnabledSel(false); break; case B_INSTALL_ZIP: InstallZip(); break; case B_REMOVE_PKG: RemovePkg(); break; case B_OPEN_ADDONS: if(haveExe()) OpenFolder(curPaths().addons); break;
     case B_MON_START: MonitorStart(); break; case B_MON_STOP: MonitorStop(); SetStatus("Monitoring stopped."); break; case B_LAUNCH_MON: MonitorStart(); LaunchGame(); break;
@@ -772,6 +818,25 @@ static LRESULT OnNotify(LPARAM l){
     return 0;
 }
 static void FrameAround(HDC dc,HWND h,COLORREF c){ if(!h||!IsWindowVisible(h)) return; RECT r; GetWindowRect(h,&r); MapWindowPoints(nullptr,g_hwnd,(POINT*)&r,2); InflateRect(&r,1,1); HBRUSH b=CreateSolidBrush(c); FrameRect(dc,&r,b); DeleteObject(b); }
+static void InfoFor(int id,std::wstring& title,std::wstring& body){
+    static const wchar_t* names[PG_COUNT]={L"Home",L"Add-ons",L"Performance",L"Memory (4 GB)",L"Game Options",L"Backups",L"Settings",L"Help"};
+    static const wchar_t* text[PG_COUNT]={
+      L"Your starting point. It shows the next step, and the state of your game, mods and controller.",
+      L"Your mods. Install a ZIP, switch mods on or off, and see which ones have a problem. Switching a mod off never deletes it.",
+      L"Watches how hard the game works your computer while you play, from outside the game. It makes a report you can share.",
+      L"Lets this older 32-bit game use up to 4 GB of memory instead of 2 GB, so it crashes less. A backup is made first and you can undo it.",
+      L"Picture size, window or full screen, smoother edges, shadows, voice language and the graphics engine (Windows or DXVK). Used when you press Play.",
+      L"Safe copies of game files that Poneglyph saved before changing anything. Restore them if something goes wrong.",
+      L"How Poneglyph looks (theme, font, size) and how it behaves.",
+      L"Quick answers, your log files, and a report you can send if you ever need help."};
+    if(id==ID_QUICKPLAY){ title=L"Play"; body=L"Starts your game right now, using the Game Options you saved. You can press it from any page."; return; }
+    bool navHover=(id>=ID_NAV&&id<ID_NAV+PG_COUNT); int idx=navHover?id-ID_NAV:g_page; title=navHover?std::wstring(names[idx]):std::wstring(L"You are here: ")+names[idx]; body=text[idx];
+}
+static void DrawInfoBox(HDC dc,const RECT& rc){
+    RECT ib={S(10),rc.bottom-S(134),S(206),rc.bottom-S(10)}; RoundPanel(dc,ib,Mix(T().panelLo,T().bg,0.15),Mix(T().panelLo,T().bg,0.45),T().border,S(12)); std::wstring title,body; InfoFor(g_hover,title,body);
+    SetBkMode(dc,TRANSPARENT); SelectObject(dc,g_fHead); SetTextColor(dc,T().header); RECT tr={ib.left+S(12),ib.top+S(8),ib.right-S(10),ib.top+S(30)}; DrawTextW(dc,title.c_str(),-1,&tr,DT_LEFT|DT_SINGLELINE|DT_END_ELLIPSIS);
+    SelectObject(dc,g_fSmall); SetTextColor(dc,T().text); RECT br={ib.left+S(12),ib.top+S(32),ib.right-S(10),ib.bottom-S(6)}; DrawTextW(dc,body.c_str(),-1,&br,DT_LEFT|DT_WORDBREAK|DT_END_ELLIPSIS);
+}
 static void PaintMain(HDC dc,RECT rc){
     FillRect(dc,&rc,g_brBg); int tb=TB(), sw=S(216), tabBar=S(62);
     RECT side={0,tb,sw,rc.bottom}; VGrad(dc,side,T().sidebar,Mix(T().sidebar,T().bg,0.55));
@@ -781,7 +846,7 @@ static void PaintMain(HDC dc,RECT rc){
     SetBkMode(dc,TRANSPARENT); SelectObject(dc,g_fTitle); SetTextColor(dc,T().text); RECT tr={S(20),tb+S(10),sw,tb+S(46)}; DrawTextW(dc,L"PONEGLYPH",-1,&tr,DT_LEFT|DT_SINGLELINE|DT_VCENTER);
     SelectObject(dc,g_fSmall); SetTextColor(dc,T().header); RECT sr={S(22),tb+S(46),sw,tb+S(68)}; DrawTextW(dc,L"Mod Loader   v" PG_MANAGER_VERSION,-1,&sr,DT_LEFT|DT_SINGLELINE);
     for(int i=0;i<PG_COUNT;i++){ if(i!=PG_HOME) FrameAround(dc,g_pages[i].main,T().border); FrameAround(dc,g_pages[i].second,T().border); if(i!=PG_HOME) FrameAround(dc,g_pages[i].card,T().border); }
-    PaintCaption(dc,rc);
+    DrawInfoBox(dc,rc); PaintCaption(dc,rc);
     if(!IsZoomed(g_hwnd)){ HBRUSH fb=CreateSolidBrush(T().frame); FrameRect(dc,&rc,fb); DeleteObject(fb); }   // the bright outline of the whole window
 }
 static LRESULT CALLBACK WndProc(HWND h,UINT m,WPARAM w,LPARAM l){
@@ -822,7 +887,7 @@ int WINAPI wWinMain(HINSTANCE hi,HINSTANCE,LPWSTR,int show){
     CoInitializeEx(nullptr,COINIT_APARTMENTTHREADED); INITCOMMONCONTROLSEX ic{sizeof ic,ICC_LISTVIEW_CLASSES|ICC_PROGRESS_CLASS|ICC_STANDARD_CLASSES}; InitCommonControlsEx(&ic);
     if(!LoadLibraryW(L"Msftedit.dll")){ MessageBoxW(nullptr,L"Windows' text component (Msftedit.dll) could not be loaded, so Poneglyph cannot show its pages.",L"Poneglyph",MB_OK|MB_ICONERROR); return 1; }
     std::error_code ec; fs::create_directories(appDataDir()/"Logs",ec); g_mlog.open(appDataDir()/"Logs"/"manager.log",512*1024,3); g_oplog.open(appDataDir()/"Logs"/"operations.log",512*1024,3);
-    g_mlog.log(LogLevel::Info,"==== Poneglyph Manager %s started ====",PG_MANAGER_VERSION); LoadManagerSettings(); LoadBundledFonts();
+    g_mlog.log(LogLevel::Info,"==== Poneglyph Manager %s started ====",PG_MANAGER_VERSION); LoadManagerSettings(); LoadBundledFonts(); LogFontStatus();
     WNDCLASSEXW wc{sizeof wc}; wc.lpfnWndProc=WndProc; wc.hInstance=hi; wc.hCursor=LoadCursorW(nullptr,IDC_ARROW); wc.lpszClassName=L"PoneglyphManagerWnd"; wc.hIcon=LoadIconW(hi,MAKEINTRESOURCEW(IDI_PG_SILVER)); wc.style=CS_HREDRAW|CS_VREDRAW; RegisterClassExW(&wc);
     WNDCLASSEXW hv{sizeof hv}; hv.lpfnWndProc=HomeViewProc; hv.hInstance=hi; hv.hCursor=LoadCursorW(nullptr,IDC_ARROW); hv.lpszClassName=L"PGHomeView"; RegisterClassExW(&hv);
     WNDCLASSEXW dd{sizeof dd}; dd.lpfnWndProc=DDProc; dd.hInstance=hi; dd.hCursor=LoadCursorW(nullptr,IDC_HAND); dd.lpszClassName=L"PGDropdown"; dd.style=CS_DROPSHADOW; RegisterClassExW(&dd);

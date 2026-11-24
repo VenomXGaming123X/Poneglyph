@@ -80,3 +80,21 @@
   [x] Settings: Font (Inter, Exo 2, Rajdhani, Chakra Petch, Nunito), Text size (Small/Medium/Large/Extra large), Bold, Show welcome note. Default text is 1-2 pt smaller.
   [x] Fonts are embedded from Google Fonts (SIL OFL) when the build can download them; otherwise Segoe UI is used.
  STILL PENDING: Other Games, Check for Update, Nakama, Donate, sound effects, One Piece font, controller/ReShade/DXVK/frame-limiter work, text language (-Lan=).
+
+## J. UNIFIED REFERENCE SHEET (owner) - STATUS OF ITEMS 1-18   (reference only; active work untouched)
+ DONE & WORKING: 7 (mods load without opening Poneglyph - engine lives in the game folder; verified by Windows test, real-mod test still to do), 8 (checklist in chat)
+ IN PROGRESS: 1 (Elbaf done; Wano + Egghead not started; UI must match preview better), 2 (rounded controls yes, window corners no), 6 (detection on Home only; no types/connection/API), 9, 10 (LAA yes, DXVK no), 12, 13, 17, 18
+ NOT STARTED: 3, 4, 5, 11, 14, 15, 16
+ KEY FLAG (#10): the sheet assumes Poneglyph loads through dinput8/winmm/version.dll. Our engine is currently d3d9.dll, which would COLLIDE with DXVK's d3d9.dll. All 3 games import dinput8.dll, so switching the engine to a dinput8.dll proxy is feasible and also frees d3d9.dll for DXVK/NovaFix. NEEDS OWNER APPROVAL.
+ KEY FLAG (#1): the real UI is GDI-drawn and cannot match the HTML preview exactly. Recommended: rebuild the screen layer on WebView2. NEEDS OWNER APPROVAL.
+
+## K. UPDATE 7 + OWNER DECISIONS (this session)
+ BUILT, awaiting Windows test (Update 7):
+  [x] #3 dropdowns 100% solid, full-contrast text (hover = solid accent with dark text).
+  [x] #4 big "Play" button above Home (starts the game with saved Game Options).
+  [x] #5 info box (bottom of the side panel) explains whichever menu item the mouse is on; otherwise shows "You are here: ...".
+  [x] Graphics engine dropdown in Game Options: "Windows Direct3D 9 (default)" or "DXVK (Vulkan)". Smart design: the Poneglyph engine chain-loads DXVK from .Poneglyph\Renderers\dxvk\d3d9.dll by full path (no file-name clash, no copy over d3d9.dll, works without the Manager). Safety: Vulkan runtime check + plain-language consent; 20-second health marker - if the game does not stay up 20 s with DXVK, the engine switches back to Windows by itself and logs RECOVERY. DXVK is embedded at build time (download is optional).
+  [x] Font diagnostics: manager.log lists which fonts are available; the Font dropdown marks "(not installed)".
+ DECISIONS FROM OWNER: keep polishing the current UI (no WebView2 for now); features first; themes -> preview approval, then REMOVE Silver Chrome and Dark Purple Chrome and keep Elbaf + Wano + Egghead.
+ CHATGPT / SOGEKING: Poneglyph = mother/owner; Sogeking = son, no authority over Poneglyph; they share information and help each other. Handoff package delivered: Poneglyph_Handoff_for_ChatGPT.zip (source snapshot + reports B-G). Do NOT implement Sogeking until the owner says so.
+ STILL PENDING: Wano + Egghead themes in the app (after preview approval), UI language (-Lan= values), controller work, ReShade, frame limiter, save snapshots, exit-code translator, Check for Update, Donate, Nakama, Other Games, sound effects, One Piece font.
